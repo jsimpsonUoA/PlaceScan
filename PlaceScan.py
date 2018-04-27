@@ -14,6 +14,7 @@ PAL Lab UoA, March 2018
 '''
 
 import os
+import glob
 import warnings
 import numpy as np
 import json
@@ -32,23 +33,30 @@ class PlaceScan():
         if not os.path.isdir(directory):
             raise IOError('Scan directory not found: "{}"'.format(directory))
         
-        self.scan_dir = directory
+        self.scan_dir, self.scan_type = directory, scan_type
         self.scan_name = directory[directory[:-1].rfind('/')+1:-1]
         
         with open(directory+'config.json', 'r') as file:
             self.config = json.load(file)
-        self.npy = np.load(directory+'scan_data.npy')
+        self.npy = np.load(glob.glob(directory+'*.npy')[0])
         
         self.metadata = self.config['metadata']
         self.updates = self.config['updates']
         
         if trace_field:
+
             self.trace_field = trace_field
             self.trace_data = self.npy[self.trace_field].copy()
             self._true_amps()
-            self.sampling_rate = self.metadata['sampling_rate']
+            if len(self.trace_data.shape) < 4:
+                s = self.trace_data.shape
+                self.trace_data = self.trace_data.reshape(list(s[:-1])+[1]*(4-len(s))+[s[-1]])
+
+            sampling_key = next((key for key in self.metadata.keys() if 'sampling_rate' in key),
+                               next(key for key in self.metadata.keys() if 'sample_rate' in key))
+            self.sampling_rate = self.metadata[sampling_key]
             self.delta = 1.0/self.sampling_rate
-            self.npts = self.metadata['samples_per_record']
+            self.npts = self.trace_data.shape[-1]
             self.endtime = (self.npts - 1) * self.delta
             self.time_delay = next((val for (key,val) in self.metadata.items() if 'time_delay' in key), 0.0)
             self.times = np.arange(0.0, self.endtime+self.delta, self.delta)*1e6 - self.time_delay
@@ -68,7 +76,7 @@ class PlaceScan():
                     self.x_positions = self.npy['ShortStage-position']
                     self.stage = 'ShortStage-position'
             elif scan_type == 'single':
-                self.x_positions = np.array([0.])
+                self.x_positions = np.arange(0.,self.npy.shape[0])
     
     
     def write(self, save_dir, update_npy=True):
@@ -111,8 +119,8 @@ class PlaceScan():
             -None            
         '''
         
-        org.combine_scans([self]+scans, new_obj=False, **kwargs)
-        
+        comb_scan = org.combine_scans([self]+scans, **kwargs)
+        return comb_scan
     
     def reposition(self, **kwargs):
         '''

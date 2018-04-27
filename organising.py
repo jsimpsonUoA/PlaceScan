@@ -15,8 +15,7 @@ import copy
 
 
 
-def combine_scans(scans, append_index=0, reposition=False, new_obj=True, 
-                  save_dir='/tmp/tmp-PlaceScan/'):
+def combine_scans(scans, append_index=0, reposition=False, save_dir='/tmp/tmp-PlaceScan/'):
     '''
     Combine two or more PlaceSace objects into a single scan.
     The index at which the scans are combined can be specified.
@@ -30,9 +29,6 @@ def combine_scans(scans, append_index=0, reposition=False, new_obj=True,
         --reposition: If true, the positions of each trace will be a 
                  continuation of the highest priority scan. Otherwise,
                  the original trace positions are unchanged.
-        --new_obj: True if a completely new PlaceScan is to be returned.
-                   Otherwse, the combination is assigned to the highest
-                   priority scan.
         --save_dir: Directory to save the new scan to.
 
     Returns:
@@ -44,40 +40,43 @@ def combine_scans(scans, append_index=0, reposition=False, new_obj=True,
         nptss = all(scan.npts == scans[0].npts for scan in scans)
         time_delays = all(scan.time_delay == scans[0].time_delay for scan in scans)
         header_values = all(set(scan.npy.dtype.names) == set(scans[0].npy.dtype.names) for scan in scans)
-
+    
         if not (sampling_rates and nptss and time_delays and header_values):
             raise AttributeError
-
+    
         combined_scan = copy.deepcopy(scans[0])
         x0 = combined_scan.x_positions[0]
-        x_delta = abs(combined_scan.x_positions[1]-x0)
+        try:
+            x_delta = abs(combined_scan.x_positions[1]-x0)
+        except:
+            x_delta = 1.0
         
         combined_scan_data = np.concatenate(tuple([scans[0].npy]+[scan.npy[append_index:] for scan in scans[1:]])) 
         combined_scan.npy = combined_scan_data     
-
+    
         if reposition:
             size = combined_scan_data.shape[0]
             x_pos = np.arange(x0, size*x_delta, x_delta)
-            combined_scan.npy[combined_scan.rot_stage] = x_pos
+            try:
+                combined_scan.npy[combined_scan.stage] = x_pos
+            except:
+                pass
         
         #Save the npy and json as a new scan, even save_dir is not specified
         combined_scan.write(save_dir, update_npy=False)
         
         #Open the saved scan
         from PlaceScan import PlaceScan
-        combined_scan = PlaceScan(save_dir, trace_field=combined_scan.trace_field)     
+        combined_scan = PlaceScan(save_dir, scan_type=combined_scan.scan_type, trace_field=combined_scan.trace_field)     
     
-
+    
         if save_dir[:4] == '/tmp':
             shutil.rmtree(save_dir)
 
     except AttributeError:
         raise Exception("PlaceScan combine_scans: Scans cannot be combined because or varying acquistion parameters (e.g. sampling_rate, npts, time_delay) and/or different scan_data headers.")
-         
-    if new_obj:
-        return combined_scan    
-    else:
-        scans[0] = combined_scan
+
+    return combined_scan    
 
 
 def reposition_traces(x_pos, x_delta=None, x0=None, steps=0, flip=False):

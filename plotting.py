@@ -10,8 +10,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import csv
 
-plt.rc('text', usetex=True)
-plt.rc('font', family='serif')
+#plt.rc('text', usetex=True)
+#plt.rc('font', family='serif')
+
 
 def format_fig(fig, ax, title, xlab=None, ylab=None, xlim=None, ylim=None, save_dir=None,
                show=True, lab_font=16.0, title_font=20.0, tick_fontsize=14.0,
@@ -46,7 +47,7 @@ def format_fig(fig, ax, title, xlab=None, ylab=None, xlim=None, ylim=None, save_
         ax.set_xlabel(xlab, fontsize=lab_font)
     if ylab:
         ax.set_ylabel(ylab, fontsize=lab_font)
-    
+
     if xlim:
         ax.set_xlim(xlim)
     if ylim:
