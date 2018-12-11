@@ -113,7 +113,7 @@ def reposition_traces(x_pos, x_delta=None, x0=None, steps=0, flip=False):
     return x_pos
 
 
-def get_muted_indices(intervals, x_pos):
+def get_muted_indices(intervals, x_pos, keep=False):
     '''
     Function which returns an array specifying which traces
     are to be muted. The array contains 1s and 0s and is the
@@ -124,6 +124,8 @@ def get_muted_indices(intervals, x_pos):
         --mute_intervals: A list of tuples and/or floats specifying the 
                           **closed** intervals or points over which to mute traces
         --x_pos: The x_position array of the traces
+        --keep: True to invert the muting. Instead of muting the intervals given,
+                this mutes everything not in the interval.
         
     Returns:
         --index_arr: An array of boolean values
@@ -133,6 +135,7 @@ def get_muted_indices(intervals, x_pos):
     for i in range(len(intervals)):
         _int = intervals[i]
         if isinstance(_int, (int, float)):
+            _int = x_pos[np.argmin(np.abs(x_pos-_int))]
             truth_val = np.where(x_pos==_int, np.zeros(len(x_pos)), 1)
         else:
             truth_val = np.where(x_pos<min(_int), np.zeros(len(x_pos))+1, 0) + \
@@ -142,7 +145,72 @@ def get_muted_indices(intervals, x_pos):
     truth_array = truth_array.sum(axis=0)
     index_arr = np.where(truth_array<len(intervals), np.zeros(len(x_pos)), 1)
     
+    if keep:
+        index_arr = np.abs(index_arr - 1)
+    
     return index_arr.astype(bool)
+
+
+def expand_updates(scan, rep_interval=1/20):
+    '''
+    Function which takes a scan where each update has more than
+    one trace, and expands these traces into individual 
+    x_positions. For scans where the sample is moving during an update.
+    It is assumed that the stage was up to speed when the first record
+    was recorded.
+    
+    Arguments:
+        --scan: The scan to expand the traces for
+        --rep_interval: The time interval (in s) between each record 
+                        acquisition
+        
+    Returns:
+        scan: The scan with the expanded updates
+    '''
+    
+    pos_0 = scan.x_positions[0]
+    
+    
+    if scan.place_version < 0.8:
+        stage_config = next(module['config'] for module in scan.config[scan.plugins_key] if 'Stage' in module["python_class_name"])  #Not called 'python_class_name' for <0.7
+    else:
+        stage_config = next(module['config'] for name,module in scan.config[scan.plugins_key].items() if 'ATS' in name)
+    start = stage_config['start']
+    vel = stage_config['velocity']
+    tot_num = scan.trace_data.shape[0]*scan.trace_data.shape[2]
+    end = rep_interval*vel*(tot_num-1)
+    
+    scan.x_positions = np.linspace(start, end, tot_num)+pos_0
+    
+    data = scan.trace_data
+    data = np.split(data, data.shape[0])
+    data = np.concatenate(data,axis=2)
+    data = np.transpose(data,axes=[2,1,0,3])
+    
+    scan.trace_data = data
+    scan.updates = tot_num
+    
+    return scan
+    
+
+def trace_averaging(traces, num_either_side=1):
+    '''
+    Function to average traces in a scan by taking the 
+    average of adjacent traces and assigning the result
+    to the original data.
+    '''
+    
+    new_traces = []
+    for i in range(len(traces)):
+        inds = np.arange(i-num_either_side,i+num_either_side+1)
+        inds = inds[np.where(inds > -1)]
+        inds = inds[np.where(inds < len(traces))]
+        av_trace = traces[inds[0]]
+        for ind in inds[1:]:
+            av_trace += traces[ind]
+        new_traces.append(av_trace / len(inds))
+    
+    return np.array(new_traces)
 
 
 
