@@ -43,9 +43,11 @@ class PlaceScan():
         with open(directory+'config.json', 'r') as file:
             self.config = json.load(file)
         self.npy = np.load(glob.glob(directory+'*.npy')[0])
-        
+
         self.metadata = self.config['metadata']
         self.updates = self.config['updates']
+        self.timestamps = np.asarray(self.npy['PLACE-time'],dtype=float)
+        
         self.place_version = float(self.metadata['PLACE_version'][:self.metadata['PLACE_version'].rfind('.')])
     
         if self.place_version < 0.7:
@@ -98,7 +100,7 @@ class PlaceScan():
                     self.stage = 'ShortStage-position'
             elif scan_type == 'single':
                 self.x_positions = np.arange(0.,self.npy.shape[0])
-                self.data_index = 0   #this was a quick fix, but may be useful permanently. Not always 0 though if scan_type=='single'
+                self.data_index = 1   #this was a quick fix, but may be useful permanently. Not always 0 though if scan_type=='single'
    
         #Open the formatting dictionary for the scan and apply formatting.
         if os.path.isfile(directory+'formatting.json'):
@@ -167,8 +169,8 @@ class PlaceScan():
         self.x_positions = org.reposition_traces(self.x_positions, **kwargs)
         
         sorting_indices = self.x_positions.argsort()
-        self.trace_data = self.trace_data[sorting_indices]
-        self.npy[self.trace_field] = self.npy[self.trace_field][sorting_indices]
+        self.trace_data = self.trace_data[tuple(sorting_indices)]
+        self.npy[self.trace_field] = self.npy[self.trace_field][tuple(sorting_indices)]
         self.x_positions.sort()
         
         self.update_formatting('reposition', kwargs)
@@ -195,8 +197,8 @@ class PlaceScan():
         self.muted_traces = np.where(mute_indices==False)
 
         if not zero:
-            self.trace_data = self.trace_data[mute_indices]
-            self.x_positions = self.x_positions[mute_indices]
+            self.trace_data = self.trace_data[tuple(mute_indices)]
+            self.x_positions = self.x_positions[tuple(mute_indices)]
         else:
             for ind in self.muted_traces:
                 self.trace_data[ind] = self.trace_data[ind]*0.0
@@ -265,11 +267,11 @@ class PlaceScan():
         self.muted_traces = mute_indices
 
         if self.trace_data.shape[0] == len(signal_levels):
-            self.trace_data = self.trace_data[mute_indices]
+            self.trace_data = self.trace_data[tuple(mute_indices)]
         else:   #For single update
             mute_indices.reshape((self.trace_data.shape[0],self.trace_data.shape[2]))
             print('Work in progress:',mute_indices.shape, self.trace_data.shape)
-        self.x_positions = self.x_positions[mute_indices]    
+        self.x_positions = self.x_positions[tuple(mute_indices)]    
         
         print('Mute by signal: Keeping {} out of {} traces.'.format(len(self.trace_data),self.updates))
         
@@ -464,15 +466,17 @@ class PlaceScan():
             --normed: Ture if the data is to be normalised
             --bandpass: A tuple of (min_freq, max_freq) for a bandpass filter
             --dc_corr_seconds: The number of seconds at the beginning of the trace
-                        to calcualte a DC shift correction from.
+                to calcualte a DC shift correction from.
+            --differentiate: An integer specifying how many times the signal should
+                be differentiated. 
             --trace_int: Plot every nth trace where trace_int=n
             --averaging: Plot averages of every n traces where averaging=n
             --position: The x_position of the trace for comparison
             --trace_index: If position is not provided, the index of the trace 
-                         in trace_data to plot for.
+                in trace_data to plot for.
             --save_dir: The figure directory to save to. If this is specified,
-                        the figures will be saved in the scan directory, and a
-                        link will be made in the specified directory.
+                the figures will be saved in the scan directory, and a
+                link will be made in the specified directory.
             --save_ext: The extension of the figure filename to describe the plot.
             --plot_picks: True if wave arrivals are to be plotted from file
             --tmin: The minimum time to plot for.
@@ -962,7 +966,7 @@ class PlaceScan():
         else:
             trace_indices = [trace_index]
             
-        picks = dict.fromkeys(self.x_positions[trace_indices], -1)
+        picks = dict.fromkeys(self.x_positions[tuple(trace_indices)], -1)
         for index in trace_indices:
             fig, wv = self.wigner_spectrogram(normed=normed, bandpass=bandpass, 
                         trace_index=index, average=average, save_dir=None, 
@@ -1054,7 +1058,7 @@ class PlaceScan():
         
         if save_dirs:
             if mode == 'scan':
-                pk.save_data(save_dirs[0], picks=dict(zip(self.x_positions[trace_inds],picks)), update_picks=False, arrival_time_correction=arrival_time_corr,
+                pk.save_data(save_dirs[0], picks=dict(zip(self.x_positions[tuple(trace_inds)],picks)), update_picks=False, arrival_time_correction=arrival_time_corr,
                     early_err_corr=early_err_corr, late_err_corr=late_err_corr)
                 self._create_fig_links(save_dirs, local_vars, pick_type+'-'+'picks', make_links=False)
             elif mode == 'position':
@@ -1437,6 +1441,13 @@ class PlaceScan():
         # Detrending
         plot_data = detrend(plot_data)  
         
+        if differentiate:
+            from scipy.integrate import cumtrapz
+            plot_data = cumtrapz(plot_data,x=plot_times,axis=1)
+            plot_times = plot_times[:-1]
+            plot_data = cumtrapz(plot_data,x=plot_times,axis=1)
+            plot_times = plot_times[:-1]
+
         if bandpass:
             plot_data = bandpass_filter(plot_data, bandpass[0], bandpass[1], self.sampling_rate)
 
@@ -1449,9 +1460,7 @@ class PlaceScan():
             plot_times = plot_times[ind:]
             plot_data = plot_data[:,ind:] 
 
-        if differentiate:
-            plot_data = np.diff(plot_data,n=int(differentiate),axis=1)
-            plot_times = plot_times[:-int(differentiate)]
+
 
         if normed:
             plot_data = normalize(plot_data, normed)

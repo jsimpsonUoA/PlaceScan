@@ -7,6 +7,7 @@ Masters project, PAL Lab UoA, 26/03/18
 '''
 
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.cm import get_cmap
@@ -25,7 +26,9 @@ import descartes
 def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None, 
                save_dir=None, show=True, lab_font=18.0, title_font=20.0, 
                tick_fontsize=14.0, grid=False, legend=False, legend_loc='lower left',
-               legend_fontsize=12.0, polar=False, polar_min=0):
+               legend_fontsize=12.0, polar=False, polar_min=0, color_key=None, 
+               color_label='', color_data=None, color_data_labels=None,
+               colorbar_trim=[0,1]):
     '''
     General function to format and save a figure.
 
@@ -46,7 +49,10 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
         --polar: True if this is a polar plot
         --polar_min: The minimum theta axis label for a polar plot. Either 
                    0 or -180.
-        
+        --color_[key, label, data, data_labels, bar_trim]: The arguments 
+            for creating a sequential color bar for the plotted data.
+             See create_colorbar function for more details.
+
     Returns:
         --fig: The figure isntance
         --ax: The axis instance
@@ -95,6 +101,12 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
     if polar:
         ax.set_rlabel_position(275.0)
 
+    if color_key:
+        fig, ax = create_colorbar(fig, ax, color_key, color_label,
+             color_data, lab_font, tick_fontsize, color_data_labels,
+             colorbar_trim)
+        plt.sca(ax)
+
     if save_dir:
         print('saving')
         if isinstance(save_dir, list):
@@ -109,6 +121,101 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
 
     return fig, ax
 
+def create_colorbar(fig, ax, color_key, color_label, color_data,
+                    lab_font, tick_fontsize, color_data_labels=None,
+                    colorbar_trim=[0,1]):
+    '''
+    Function which is called within format_fig
+    to color-code plotted lines by a 3rd variable.
+    This function also handles the formatting of
+    the colorbar
+
+    Arguments:
+        --fig: The matplotlib figure
+        --ax: The matplotlib axis containing the lines
+        --color_key: The color of the shaded colorbar
+            Accepted values are 'grey', 'purple',
+            'green', 'blue', orange', or 'red'.
+        --color_label: A label for the colorbar axis
+        --color_data: The 3rd varialbe to color code the
+            plotted lines by. This can be a tuple of two
+            numbers representing the lower and upper extremes,
+            assuming the lines between are evenly spaced in
+            this range. Alternatively, this can be a list
+            of the same length as the number of plotted
+            lines, containing numbers which will be used
+            to assign colors to the lines. A list of numbers
+            represented as strings is also acceptable.
+        --lab_font: The axis label fontsize
+        --tick_fontsize: The axis tick fontsize
+        --color_data_labels: A  list containing tick labels for the
+            colorbar, if something different from the automatic 
+            ticklabels based on color_data is required. These are evenly
+            spaced along the colorbar
+        --colorbar_trim: A color map usually spans the range 0.0-->1.0
+            If a smaller range is desired for better visibility etc.,
+            then this can be given here as a two element list specifying
+            the lower and upper bounds of the colors, e.g. [0.1,0.9]
+
+    Returns:
+        --fig: The figure with the colorbar plotted
+    '''
+
+    lines = ax.lines
+
+    #Find the upper and lower values for the colormap
+    if isinstance(color_data, tuple):
+        color_data = np.linspace(color_data[0], color_data[1], len(lines))
+    else:
+        if isinstance(color_data[0], str):
+            color_data = np.array([float(num) for num in color_data])
+    max_n, min_n = max(color_data), min(color_data)
+    data_range = max_n - min_n
+    interval = colorbar_trim[1] - colorbar_trim[0]
+    data_midpoint = data_range / 2 + min_n
+    interval_midpoint = interval / 2 + colorbar_trim[0]
+    vmax = data_range / interval
+    shift = (interval_midpoint * vmax) - data_midpoint
+    vmax = vmax - shift
+    vmin = 0.0 - shift
+
+    #Create the colormap
+    cmap = get_cmap(color_key.capitalize()+'s')
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+
+    #Color-code the plot
+    for i, line in enumerate(lines):
+        line.set_color(cmap(int(255*norm(color_data[i]))))
+
+    #Only add the colorbar if there is not already one on the plot.
+    #Note: This conditional may not behave as expected if Axes objects
+    #are manually added elsewhere.
+    add_axes = np.sum([isinstance(i,mpl.axes.Axes) for i in fig.get_children()]) < 2
+    if add_axes:
+        #Rearrange the axes
+        ax_pos = list(ax.get_position().bounds)
+        ax_width =  ax_pos[2]         #The width
+        ax_pos[2] = ax_width * 0.91   #Shrink the width
+        ax.set_position(ax_pos)
+
+        #Setup and insert the colorbar axis
+        cbar_width = ax_width * 0.03
+        cbar_pos = [ax_pos[0]+ax_width-cbar_width, ax_pos[1], cbar_width, ax_pos[3]]
+        cbar_ax = plt.axes(cbar_pos)
+    
+        mappable = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        mappable.set_array([])
+        cb = plt.colorbar(mappable=mappable,cax=cbar_ax,boundaries=np.arange(min_n,max_n,data_range/1000))
+        
+        #Format the colorbar
+        if color_data_labels:
+            ticks = mpl.ticker.FixedLocator(np.linspace(min_n,max_n-data_range*0.0015, len(color_data_labels)))
+            cb.set_ticks(ticks) 
+            cb.set_ticklabels(color_data_labels)
+        cb.ax.tick_params(labelsize=tick_fontsize)
+        cb.set_label(color_label, fontsize=lab_font, rotation=270.,verticalalignment='bottom')
+
+    return fig, ax
 
 
 def wiggle_plot(values, times, x_positions, fig=None, figsize=(8,6),amp_factor=8.0,
@@ -268,7 +375,6 @@ def all_traces(values, times, fig=None, figsize=(8,6),
     if plot_picks_dir:
         plot_picks(ax, plot_picks_dir, pick_errors, picks_offset=picks_offset)
 
-
     fig, ax = format_fig(fig, ax, title=title, xlab='Time ($\mu$s)', ylab=ylab,
                             xlim=(max(0.0,times[0]), min(times[-1], tmax)),  
                             save_dir=save_dir, show=False, legend=legend, **format_dict)
@@ -410,16 +516,17 @@ def arrival_times_plot(picks_dirs, polar=True, fig=None, figsize=(8,8),
     format_dict = kwargs.copy()     
     [format_dict.pop(key) for key in list(format_dict.keys()) if key not in inspect.getargspec(format_fig)[0]]
     
-    cmap = get_cmap(color.capitalize()+'s')
-    colors = np.linspace(0.2,0.9,len(picks_dirs))
+    if not labels:
+        labels = ['']*len(picks_dirs)
     markers = ['x','.','+','d','*','s']
+    colors = ['r','g','b','y','c','m']
     for i in range(len(picks_dirs)):
-        ax, x_pos = plot_picks(ax, picks_dirs[i], pick_errors, color=cmap(colors[i]), polar=polar,
-                   label=labels[i], marker=markers[i%6], **plot_kwargs)
+        ax, x_pos = plot_picks(ax, picks_dirs[i], pick_errors, color=colors[i%6], polar=polar,
+                   label=labels[i], marker=markers[i%6], **plot_kwargs) 
     
     
     fig, ax = format_fig(fig, ax, title, save_dir=save_dir, show=show, grid=polar,
-                         legend=len(labels)>0, legend_loc=legend_loc, polar=polar,
+                         legend_loc=legend_loc, polar=polar,
                          xlim=(x_pos[0],x_pos[-1]),**format_dict)
 
     return fig     
@@ -894,7 +1001,33 @@ def zoomed_inset(fig, ax, region=[1,2,1,2], zoom=2, aspect=2, inset_loc=2):
     return ax
     
     
+def get_integer_ticks(minv, maxv):
+    '''
+    Small function which trys to get integer ticks
+    for an axis based on the max and min values
+    '''
+
+    acceptable_numbers = [3,4,5,6] #The acceptable number of ticks
+    sig_digits = 3                 #Number of significant digits
+
+    for num in acceptable_numbers[::-1]:
+        if (maxv-minv) % (num-1):
+            ticks = np.linspace(minv, maxv,num)
+            break
+    else:
+        ticks = np.linspace(minv, maxv,4)
     
+    for i, num in enumerate(ticks):
+        num, counter = str(num), 0
+        for char in num:
+            if char not in '.0':
+                break
+            counter += 1
+        num = num[:counter+sig_digits+1]
+        ticks[i] = num
+
+    return ticks
+
     
     
     
