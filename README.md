@@ -8,7 +8,7 @@ The modular design of the code, centred around the PlaceScan object, provides a 
 
 # Download
 
-To download, clone the git repository:
+To download, clone the git repository, type in a terminal:
 
 ```
 git clone https://github.com/PALab/place.git
