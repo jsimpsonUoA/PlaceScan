@@ -11,7 +11,7 @@ The modular design of the code, centred around the PlaceScan object, provides a 
 To download, clone the git repository, type in a terminal:
 
 ```
-git clone https://github.com/PALab/place.git
+git clone https://github.com/jsimpsonUoA/PlaceScan.git
 ```
 
 # Contact
