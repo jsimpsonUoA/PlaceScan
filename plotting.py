@@ -72,12 +72,14 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
     if ylab:
         ax.set_ylabel(ylab, fontsize=lab_font)
 
-    if xlim:
+    if xlim or polar_min:
         if polar:
             
-            labels = np.linspace(0,360, 8, endpoint=False)
+            labels = np.linspace(0.,360., 8, endpoint=False)
             if polar_min == -180:
-                labels = np.where(labels>np.rad2deg(xlim[1])+1.,labels-360.,labels)
+                labels = np.where(labels>xlim[1]+1.,labels-360.,labels)
+            elif polar_min:
+                labels = np.where(labels>polar_min+360.,labels-360.,labels)
             if not plt.rcParams['text.usetex']:
                 ax.set_xticklabels(['{}°'.format(s) for s in labels.astype(int)])
             else:
@@ -123,7 +125,7 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
 
 def create_colorbar(fig, ax, color_key, color_label, color_data,
                     lab_font, tick_fontsize, color_data_labels=None,
-                    colorbar_trim=[0,1]):
+                    colorbar_trim=[.2,9]):
     '''
     Function which is called within format_fig
     to color-code plotted lines by a 3rd variable.
@@ -208,7 +210,7 @@ def create_colorbar(fig, ax, color_key, color_label, color_data,
         cb = plt.colorbar(mappable=mappable,cax=cbar_ax,boundaries=np.arange(min_n,max_n,data_range/1000))
         
         #Format the colorbar
-        if color_data_labels:
+        if not isinstance(color_data_labels, type(None)):
             ticks = mpl.ticker.FixedLocator(np.linspace(min_n,max_n-data_range*0.0015, len(color_data_labels)))
             cb.set_ticks(ticks) 
             cb.set_ticklabels(color_data_labels)
@@ -519,7 +521,7 @@ def arrival_times_plot(picks_dirs, polar=True, fig=None, figsize=(8,8),
     if not labels:
         labels = ['']*len(picks_dirs)
     markers = ['x','.','+','d','*','s']
-    colors = ['r','g','b','y','c','m']
+    colors = ['r','b','g','y','c','m']
     for i in range(len(picks_dirs)):
         ax, x_pos = plot_picks(ax, picks_dirs[i], pick_errors, color=colors[i%6], polar=polar,
                    label=labels[i], marker=markers[i%6], **plot_kwargs) 
@@ -899,7 +901,7 @@ def multitaper_spect(values, times, sampling_rate, figsize=(8,9), tmax=1e20,
     return fig   
     
 
-def cross_correlation(a, b, sampling_rate, fig=None, figsize=(8,6), **kwargs):
+def cross_correlation(a, b, sampling_rate, fig=None, figsize=(8,6), plot=True, **kwargs):
     '''
     Function which performs the cross correlation of two
     traces in the time domain, and plots the result
@@ -908,6 +910,7 @@ def cross_correlation(a, b, sampling_rate, fig=None, figsize=(8,6), **kwargs):
         --a: The first trace
         --b: The second trace
         --fig: A figure instance to plot onto
+        --plot: True to create a plot of the correlation function
         --figsize: The size of the figure
         --**kwargs: The keyword arguments for plotting and saving
         
@@ -918,22 +921,24 @@ def cross_correlation(a, b, sampling_rate, fig=None, figsize=(8,6), **kwargs):
     
     from scipy.signal import correlate
     
-    if not fig:
+    if not fig and plot:
         fig = plt.figure(figsize=figsize)
         ax = plt.subplot(111)
-    else:
+    elif plot:
         ax = fig.gca()
     
     norm_factor = (np.sum(a ** 2)) ** 0.5 * (np.sum(b ** 2)) ** 0.5
     corr = correlate(a-np.mean(a),b-np.mean(b)) / norm_factor
     times = np.arange(-np.floor(len(corr)/2),np.floor(len(corr)/2)+1) * 1. / sampling_rate * 1e6
-    ax.plot(times,corr)
     
     max_lag = times[np.argmax(np.abs(corr))]
-    ax.axvline(x=max_lag, linestyle='--', linewidth=1,color='r')
-    ax.text(0.05,0.9, '$r_{max}$='+str(max_lag), transform=ax.transAxes)
-    
-    fig, ax = format_fig(fig, ax, xlab='Lag Time ($\mu$s)',xlim=(times[0],times[-1]), **kwargs)
+
+    if plot:
+        ax.plot(times,corr)
+        ax.axvline(x=max_lag, linestyle='--', linewidth=1,color='r')
+        ax.text(0.05,0.9, '$r_{max}$='+str(max_lag), transform=ax.transAxes)
+        
+        fig, ax = format_fig(fig, ax, xlab='Lag Time ($\mu$s)',xlim=(times[0],times[-1]), **kwargs)
     
     return fig, max_lag
     

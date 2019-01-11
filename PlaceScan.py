@@ -79,7 +79,7 @@ class PlaceScan():
                 self.time_delay += 0.7                #Be careful with this!
             '''
                 
-            self.times = np.arange(0.0, self.endtime+self.delta, self.delta)*1e6 #- self.time_delay
+            self.times = np.arange(0.0, self.endtime+self.delta, self.delta)*1e6 - self.time_delay
             self._true_amps()
             self._get_energy_from_comments(divide_energy)
             
@@ -87,10 +87,10 @@ class PlaceScan():
                 try:
                     self.x_positions = self.npy['ArduinoStage-position']
                     self.stage = 'ArduinoStage-position'
-                    self.data_index = 1
                 except ValueError:
                     self.x_positions = self.npy['RotStage-position']
                     self.stage = 'RotStage-position'
+                self.data_index = 1
             elif scan_type == 'linear':
                 try:
                     self.x_positions = self.npy['LongStage-position']
@@ -169,8 +169,8 @@ class PlaceScan():
         self.x_positions = org.reposition_traces(self.x_positions, **kwargs)
         
         sorting_indices = self.x_positions.argsort()
-        self.trace_data = self.trace_data[tuple(sorting_indices)]
-        self.npy[self.trace_field] = self.npy[self.trace_field][tuple(sorting_indices)]
+        self.trace_data = self.trace_data[sorting_indices]
+        self.npy[self.trace_field] = self.npy[self.trace_field][sorting_indices]
         self.x_positions.sort()
         
         self.update_formatting('reposition', kwargs)
@@ -351,7 +351,10 @@ class PlaceScan():
         for function,kwargs in self.formatting.items():
             if 'args' in kwargs:
                 args = kwargs.pop('args')
-            eval(function)(self,*args,**kwargs)
+                if args:
+                    eval(function)(self,*args,**kwargs)
+                else:
+                    eval(function)(self,**kwargs)
             
         
     def update_formatting(self, key, kwargs):
@@ -378,8 +381,8 @@ class PlaceScan():
     #######################   Plotting methods ###############################
         
     def wiggle_plot(self, normed=True, bandpass=None, dc_corr_seconds=None,
-                    save_dir=None, save_ext='', tmax=None, plot_picks=False,
-                    decimate=False, **kwargs):
+                    save_dir=None, save_ext='', tmax=None, tmin=0.0, 
+                    plot_picks=False, decimate=False, **kwargs):
         '''
         Plot a wiggle plot of the trace data from the scan
         
@@ -393,6 +396,7 @@ class PlaceScan():
                         link will be made in the specified directory.
             --save_ext: The extension of the figure filename to describe the plot.
             --tmax: The maximum time to plot for
+            --tmin: The minimum time to plot for
             --plot_picks: True if wave arrivals are to be plotted from file
             --decimate: true, or integer factor to downsample data by
             --kwargs: The keyword arguments for the wiggle plot
@@ -402,7 +406,7 @@ class PlaceScan():
         '''
         
         local_vars = locals(); del local_vars['self']   
-        plot_data, plot_times = self._get_plot_data(tmax, None, normed, bandpass, dc_corr_seconds, decimate)
+        plot_data, plot_times = self._get_plot_data(tmax, tmin, normed, bandpass, dc_corr_seconds, decimate)
         
         picks_dir = self._get_picks_dir(plot_picks)
         
@@ -527,7 +531,8 @@ class PlaceScan():
         return fig
         
     
-    def arrival_picks_plot(self, picks_dirs=None, scans=None, save_dir=None, save_ext='', **kwargs):
+    def arrival_picks_plot(self, picks_dirs=None, scans=None, save_dir=None, save_ext='',
+                           pick_type='p', **kwargs):
         '''
         Plot the arrival picks of a scan on a Cartesian or polar plot.
         
@@ -538,6 +543,7 @@ class PlaceScan():
                         the figures will be saved in the scan directory, and a
                         link will be made in the specified directory.
             --save_ext: The extension of the figure filename to describe the plot.
+            --pick_type: The type/name of teh arrival to plot
             --kwargs: The keyword arguments for the plot
             
         Returns:
@@ -547,9 +553,9 @@ class PlaceScan():
         local_vars = locals(); del local_vars['self']; del local_vars['scans']
         
         if scans:
-            picks_dirs = [scan.scan_dir+scan.scan_name+'_p-picks.csv' for scan in scans]   
+            picks_dirs = [scan.scan_dir+scan.scan_name+'_{}-picks.csv'.format(pick_type) for scan in scans]   
         else:
-            picks_dirs = self.scan_dir+self.scan_name+'_p-picks.csv'
+            picks_dirs = self.scan_dir+self.scan_name+'_{}-picks.csv'.format(pick_type)
         save_dirs = self._get_master_dirs(save_dir, 'ar'+save_ext, common_sample=True)
 
         fig = plot.arrival_times_plot(picks_dirs, save_dir=save_dirs, **kwargs)
@@ -1197,6 +1203,59 @@ class PlaceScan():
                 scan._create_fig_links(save_dirs[i], local_vars, pick_type+'-'+'picks', make_links=False)
         
 
+    def aic_picking(self, normed=False, bandpass=None, dc_corr_seconds=None,
+                    tmax=None, tmin=0.0, save_picks=True, bounds=None,
+                    arrival_time_corr=0.0, early_err_corr=0.0, late_err_corr=0.0,
+                    pick_type='p',**kwargs):
+        '''
+        Function to automatically pick wave arrivals
+        using the Akaike Information Criterion. This
+        method is generally reliable and accurate, and
+        is the simplest of the automatic picking algorithms
+        in PlaceScan. Each trace is picked independently,
+        and manual correction can easily be applied when
+        desired.
+
+        Arguments:
+            --normed: Ture if the data is to be normalised
+            --bandpass: A tuple of (min_freq, max_freq) for a bandpass filter
+            --dc_corr_seconds: The number of seconds at the beginning of the trace
+                        to calcualte a DC shift correction from.
+            --tmax: The maximum time to plot for
+            --tmin: The minimum time to plot for
+            --save_picks: True to save the picks to file.
+            --bounds: A two-element tuple containing lower and
+                upper bounds to constrain the automatic picking. The upper and
+                lower bounds can either be numbers, or a list bounds for each
+                trace.
+            --arrival_time_corr: An arrival time correction to apply to
+                each arrival time in picks. The correction is **added**, so negative
+                numbers can be specified (in microseconds).
+            --early_err_corr: A correction to apply to the early errors
+            --late_err_corr: A correction to apply to the late errors
+            --pick_type: The type of arrival pick
+            --kwargs: The keyword arguments for the ACI picker
+
+        Returns:
+            --picks: A list of the picks
+        '''
+
+        local_vars = locals(); del local_vars['self']
+
+        if save_picks:
+            save_dirs = self._get_master_dirs(self.scan_dir, pick_type+'-picks', file_types=['.csv'])
+
+        data, times = self._get_plot_data(tmax=tmax, tmin=tmin, normed=normed,
+                    bandpass=bandpass,dc_corr_seconds=dc_corr_seconds)
+        picker = pk.AICPicker(data, times, self.x_positions,bounds=bounds,**kwargs)
+        picks = picker.picks 
+
+        if save_picks:
+            pk.save_data(save_dirs[0], picks=dict(zip(self.x_positions,picks)), update_picks=False, 
+                    arrival_time_correction=arrival_time_corr, early_err_corr=early_err_corr, late_err_corr=late_err_corr)
+            self._create_fig_links(save_dirs, local_vars, pick_type+'-picks', make_links=False)
+        
+        return picks
 
     def max_amp(self):
         '''
@@ -1209,7 +1268,7 @@ class PlaceScan():
 
 
     def rock_physics_calculator(self, labels, data_filename, scans=None, 
-                            save_ext='', **kwargs):
+                            save_ext='', pick_type='p',**kwargs):
         '''
         Function to do rock physics calculations on PlaceScan
         objects. The scans must all be on the same sample. A
@@ -1224,6 +1283,7 @@ class PlaceScan():
                 for the sample like mass, height, etc.
             --scans: A lsit of PlaceScan objects to calcualte the anisotropies for
             --save_ext: An extension for the filename
+            --pick_type: The type/name of the pick to use for P-waves
             --**kwargs: The keyword arguments for the anisotropy calcualtion
 
         Returns:
@@ -1233,11 +1293,11 @@ class PlaceScan():
         local_vars = locals(); del local_vars['self']; del local_vars['scans']
         
         if scans:
-            picks_dirs = [scan.scan_dir+scan.scan_name+'_p-picks.csv' for scan in scans] 
+            picks_dirs = [scan.scan_dir+scan.scan_name+'_{}-picks.csv'.format(pick_type) for scan in scans] 
             save_dir =  self.scan_dir[:self.scan_dir[:-1].rfind('/')+1]
             id_ = self.sample
         else:
-            picks_dirs = self.scan_dir+self.scan_name+'_p-picks.csv'
+            picks_dirs = self.scan_dir+self.scan_name+'_{}-picks.csv'.format(pick_type)
             save_dir = self.scan_dir
             id_ = self.scan_name
         save_dirs = self._get_master_dirs(save_dir, 'rock_physics'+save_ext, file_types=['.p'], common_sample=True) 
