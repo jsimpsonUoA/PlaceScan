@@ -16,16 +16,16 @@ $ git clone https://github.com/jsimpsonUoA/PlaceScan.git
 
 # Installation
 
-PlaceScan is installed as a Python module, so that it can be imported like any other library. Once downloaded, run the setup.py script in the PlaceScan directory by typing in a terminal:
+placescan is installed as a Python module, so that it can be imported like any other library. Once downloaded, run the setup.py script in the PlaceScan directory by typing in a terminal:
 
 ```
 $ python setup.py develop
 ```
 
-After this, you should be able to import PlaceScan into a Python script using:
+After this, you should be able to import placescan into a Python script using:
 
 ```
-from PlaceScan.main import PlaceScan
+from placescan.main import PlaceScan
 ```
 
 A simple plotting example is provided, along with example data. The code has extensive documentation for all functions within main.py and the auxilliary scripts.

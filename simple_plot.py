@@ -2,7 +2,7 @@
 Example script to plot some waveform data using PlaceScan
 '''
 
-from PlaceScan.main import PlaceScan
+from placescan.main import PlaceScan
 
 #Initialise the scans
 scan1 = PlaceScan('example-data/1MPa-scan/', scan_type='rotation', trace_field='ATS660-trace',apply_formatting=False,divide_energy=False)
