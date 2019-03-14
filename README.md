@@ -25,7 +25,7 @@ $ python setup.py develop
 After this, you should be able to import PlaceScan into a Python script using:
 
 ```
-import PlaceScan
+from PlaceScan.main import PlaceScan
 ```
 
 A simple plotting example is provided, along with example data. The code has extensive documentation for all functions within main.py and the auxilliary scripts.
