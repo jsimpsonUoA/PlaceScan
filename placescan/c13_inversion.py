@@ -26,7 +26,7 @@ from uncertainties import ufloat
 
 import matplotlib.pyplot as plt
 
-import PlaceScan.plotting as plot
+import placescan.plotting as plot
 
 
 class C13CalculatorExp():

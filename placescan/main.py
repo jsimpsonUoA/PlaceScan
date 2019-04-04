@@ -22,11 +22,11 @@ import pickle
 
 from scipy.signal import detrend
 
-import PlaceScan.organising as org
-import PlaceScan.plotting as plot
-import PlaceScan.picking as pk
-#import PlaceScan.dtw_main as dtw
-import PlaceScan.analysis as analysis
+import placescan.organising as org
+import placescan.plotting as plot
+import placescan.picking as pk
+#import placescan.dtw_main as dtw
+import placescan.analysis as analysis
 
 class PlaceScan():
     
@@ -519,7 +519,7 @@ class PlaceScan():
     def trace_plot(self, normed=False, bandpass=None, dc_corr_seconds=None, 
                     differentiate=False, trace_int=None, averaging=None, 
                     position=None, trace_index=None, save_dir=None, save_ext='', 
-                    plot_picks=False, tmin=0.0, tmax=None, window_around_p=None, 
+                    plot_picks=False, tmin=0.0, tmax=1e20, window_around_p=None, 
                     picks_offset=None, **kwargs):
         '''
         Function to plot traces as a time series on the same axis

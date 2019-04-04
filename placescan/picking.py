@@ -10,7 +10,7 @@ Masters project, PAL Lab UoA, April 2018
 import numpy as np
 import matplotlib.pyplot as plt
 import csv
-from PlaceScan.plotting import format_fig
+from placescan.plotting import format_fig
 import inspect
 from scipy.signal import argrelextrema
 

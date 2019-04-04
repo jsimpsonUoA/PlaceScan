@@ -20,8 +20,8 @@ import shapely.geometry as sg
 import shapely.affinity as af
 import descartes
 '''
-plt.rc('text', usetex=True)
-plt.rc('font', family='serif')
+#plt.rc('text', usetex=True)
+#plt.rc('font', family='serif')
 
 def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None, 
                save_dir=None, show=True, lab_font=20.0, title_font=20.0, 
@@ -346,7 +346,7 @@ def all_traces(values, times, fig=None, figsize=(8,6),
                 tmax=1e20, title=None, ylab='Amplitude', show=True,
                 save_dir=False, plot_picks_dir=None, pick_errors=None,
                 picks_offset=None, legend=False, show_orientation=False, 
-                 position=None, inset_params=None, **kwargs):
+                 position=None, inset_params=None, marker='', **kwargs):
     '''
     Function to plot all the traces given in values as a time series
     on the same axis
@@ -372,6 +372,7 @@ def all_traces(values, times, fig=None, figsize=(8,6),
                   function.
         --position: Position of the trace, if a single trace is plotted.
         --inset_params: A dictioanry containing parameters for a zoomed inset
+        --marker: A marker to plot with
         --**kwargs: The keyword arguments for the plotting
         
     Returns:
@@ -391,7 +392,7 @@ def all_traces(values, times, fig=None, figsize=(8,6),
     [format_dict.pop(key) for key in list(format_dict.keys()) if key not in inspect.getargspec(format_fig)[0]]
     
     for value in values:
-        ax.plot(times, value, **plot_kwargs)
+        ax.plot(times, value, marker=marker, **plot_kwargs)
 
     if plot_picks_dir:
         plot_picks(ax, plot_picks_dir, pick_errors, picks_offset=picks_offset)

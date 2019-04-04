@@ -13,9 +13,9 @@ import pickle
 from uncertainties import ufloat
 from uncertainties import unumpy as unp
 
-import PlaceScan.plotting as plotting
-from PlaceScan.c13_inversion import C13CalculatorExp
-from PlaceScan.true_c13 import C13Calculator
+import placescan.plotting as plotting
+from placescan.c13_inversion import C13CalculatorExp
+from placescan.true_c13 import C13Calculator
 
 class RPCalculator():
     def __init__(self, sample_name, picks_dirs, rp_save_filename,
