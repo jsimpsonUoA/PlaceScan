@@ -163,7 +163,7 @@ class C13CalculatorExp():
         fig=plt.figure(figsize=(8,4.5))
         fig = plot.simple_plot_points(np.rad2deg(self.group_angles), self.group_vels, marker='x',linestyle='',color=plot.colors[0], fig=fig,show=False)
         fig = plot.simple_plot_points(np.rad2deg(self.group_angles), self.forward_model(self.group_angles,self.c13, best_fit[1], best_fit[2],best_fit[3], best_fit[4],best_fit[5]),
-                            color=plot.colors[1],linestyle='-',fig=fig,lab_font=16.,ylab='P-wave Group Velocity (m/s)',xlab='Group Angle (degrees)',ylim=(3000,6000),
+                            color=plot.colors[1],linestyle='-',fig=fig,lab_font=16.,ylab='P-wave Group Velocity (m/s)',xlab='Group Angle (degrees)',
                             save_dir=None)#'7f-schist-2_inversrion_{}.pdf'.format(int(self.c11/1e9)))
         
 
@@ -319,7 +319,7 @@ class C13CalculatorExp():
 
         plt.plot(self.group_angles, self.group_vels, 'xb')
         plt.plot(self.group_angles, self.strong_anisotropy_forward_model(self.group_angles,best_fit[0], best_fit[1], best_fit[2]))
-        plt.ylim(3000,6000)
+        #plt.(3000,6000)
 
         return [c13(best_fit[0])], [c13_err]
 

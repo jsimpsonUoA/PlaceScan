@@ -1,6 +1,6 @@
 '''
 Python functions to facilitate plotting of scan data. These functions
-are used mostly in conjunction with PlaceScan.
+are used in conjunction with PlaceScan, but some could be used stand-alone.
 
 Jonathan Simpson, jsim921@aucklanduni.ac.nz
 Masters project, PAL Lab UoA, 26/03/18
@@ -15,11 +15,6 @@ from mtspec import wigner_ville_spectrum, mtspec
 import csv
 import inspect
 
-'''
-import shapely.geometry as sg
-import shapely.affinity as af
-import descartes
-'''
 #plt.rc('text', usetex=True)
 #plt.rc('font', family='serif')
 
@@ -28,7 +23,7 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
                tick_fontsize=14.0, grid=False, legend=False, legend_loc='lower left',
                legend_fontsize=12.0, polar=False, polar_min=0, colorbar=True, 
                color_key=None, color_label='', color_data=None, color_data_labels=None,
-               colorbar_trim=[0,1], colorbar_round=1, colorbar_horiz=False):
+               colorbar_trim=[0,1], colorbar_round=1, colorbar_horiz=False, lines=None):
     '''
     General function to format and save a figure.
 
@@ -53,6 +48,7 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
         --color_[key, label, data, data_labels, bar_trim, bar_round, bar_horiz]: 
             The arguments for creating a sequential color bar for the plotted data.
             See create_colorbar function for more details.
+        --lines: The lines plotted on the axis
 
     Returns:
         --fig: The figure isntance
@@ -90,24 +86,27 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
     if ylim:
         ax.set_ylim(ylim) 
 
-    ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
-    ax.tick_params(axis='both', which='minor', labelsize=tick_fontsize)
+    if tick_fontsize:
+        ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
+        ax.tick_params(axis='both', which='minor', labelsize=tick_fontsize)
 
     if grid:
-        ax.set_rlabel_position(340)
+        ax.set_rlabel_position(340) 
         ax.yaxis.get_major_locator().base.set_params(nbins=6)
         ax.grid(which='major', linestyle=':')
 
     if legend:
-        plt.legend(loc=legend_loc,fontsize=legend_fontsize)
+        ax.legend(loc=legend_loc,fontsize=legend_fontsize)
 
     if polar:
-        ax.set_rlabel_position(275.0)
+        #ax.set_rlabel_position(275.0)  Commented on 10/12/19
+        ax.set_rlabel_position(23.0)
 
     if color_key:
         fig, ax = create_colorbar(fig, ax, color_key, color_label,
              color_data, lab_font, tick_fontsize, color_data_labels,
-             colorbar_trim, colorbar, colorbar_round, colorbar_horiz)
+             colorbar_trim, colorbar, colorbar_round, colorbar_horiz,
+             lines)
         plt.sca(ax)
 
     if save_dir:
@@ -127,7 +126,7 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
 def create_colorbar(fig, ax, color_key, color_label, color_data,
                     lab_font, tick_fontsize, color_data_labels=None,
                     colorbar_trim=[.2,9], colorbar=True, colorbar_round=1,
-                    colorbar_horiz=False):
+                    colorbar_horiz=False, lines=None):
     '''
     Function which is called within format_fig
     to color-code plotted lines by a 3rd variable.
@@ -139,7 +138,8 @@ def create_colorbar(fig, ax, color_key, color_label, color_data,
         --ax: The matplotlib axis containing the lines
         --color_key: The color of the shaded colorbar
             Accepted values are 'grey', 'purple',
-            'green', 'blue', orange', or 'red'.
+            'green', 'blue', orange', or 'red', or
+            any matplotlib colorbar key.
         --color_label: A label for the colorbar axis
         --color_data: The 3rd varialbe to color code the
             plotted lines by. This can be a tuple of two
@@ -164,12 +164,14 @@ def create_colorbar(fig, ax, color_key, color_label, color_data,
         --colorbar_round: The number of decimal places to round the 
                           colorbar axis labels to
         --colorbar_horiz: True to have a horizontal colorbar
+        --lines: The specific lines to apply the color scale to.
 
     Returns:
         --fig: The figure with the colorbar plotted
     '''
 
-    lines = ax.lines
+    if not lines:
+        lines = ax.lines
 
     #Find the upper and lower values for the colormap
     if isinstance(color_data, tuple):
@@ -187,7 +189,10 @@ def create_colorbar(fig, ax, color_key, color_label, color_data,
     vmax = vmax - shift
     vmin = 0.0 - shift
     #Create the colormap
-    cmap = get_cmap(color_key.capitalize()+'s')
+    if color_key in ['grey', 'purple','green', 'blue', 'orange','red']:
+        cmap = get_cmap(color_key.capitalize()+'s')
+    else:
+        cmap = get_cmap(color_key)
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
     #Color-code the plot
@@ -240,8 +245,9 @@ def create_colorbar(fig, ax, color_key, color_label, color_data,
 
 
 def wiggle_plot(values, times, x_positions, fig=None, figsize=(8,6),amp_factor=8.0,
-                tmax=1e20, xlab=r'$\theta$ (degrees)', plot_picks_dir=None,
-                pick_errors=None, picks_offset=0., xlim=None, **kwargs):
+                tmax=1e20, xlab=r'$\theta$ (degrees)', ylab=r'Time ($\mu$s)', 
+                plot_picks_dir=None, pick_errors=None, picks_offset=0., xlim=None, 
+                **kwargs):
     '''
     Function to plot a wiggle plot of a laser ultrasound scan
     
@@ -254,6 +260,7 @@ def wiggle_plot(values, times, x_positions, fig=None, figsize=(8,6),amp_factor=8
         --amp_factor: Factor to multiply values by when plotting
         --tmax: The maximum time to plot for
         --xlab: The x label for the plot
+        --ylab: The ylabel for the plot
         --plot_picks_dir: The directory where wave arrival picks are saved
         --pick_errors: Which wave arrival pick errors to plot.
                        One of 'both', 'early', 'late', or None.
@@ -289,7 +296,7 @@ def wiggle_plot(values, times, x_positions, fig=None, figsize=(8,6),amp_factor=8
         minx = x_positions[0]-(x_positions[-1]+x_positions[0])*0.01
         xlim = (minx, maxx)
 
-    fig, ax = format_fig(fig, ax, xlab=xlab, ylab='Time ($\mu$s)', 
+    fig, ax = format_fig(fig, ax, xlab=xlab, ylab=ylab, 
                          xlim=xlim, ylim=(min(times[-1], tmax), 0.0), **kwargs)
 
     return fig
@@ -298,7 +305,8 @@ def wiggle_plot(values, times, x_positions, fig=None, figsize=(8,6),amp_factor=8
 
 def variable_density(values, times, x_positions, fig=None, figsize=(9,7), gain=0.0,
                 tmax=1e20, xlab='Position (degrees)', plot_picks_dir=None, 
-                pick_errors=None, **kwargs):
+                pick_errors=None, picks_offset=0., xlim=None, colorbar=False, 
+                color_map='seismic', data_limits=None, **kwargs):
     '''
     Function to plot a variable density wiggle plot of a laser ultrasound scan
     
@@ -314,6 +322,14 @@ def variable_density(values, times, x_positions, fig=None, figsize=(9,7), gain=0
         --plot_picks_dir: The directory where wave arrival picks are saved
         --pick_errors: Which wave arrival pick errors to plot.
                        One of 'both', 'early', 'late', or None.
+        --picks_offset: The amount to offset the arrival time picks from the
+                 saved positions
+        --xlim: The x axis limits of the data
+        --colorbar: True to show a color scale of the amplitudes
+        --color_map: The matplotlib color map to use for the vd plot
+        --data_limits: A custom 2-element list of [min_val,max_val] to 
+            manually set the limits of the scale for plotting. If None,
+            the minimum and maximum data values are used.
         --**kwargs: Keyqord arguments for figure formatting/saving (see format_fig)
         
     Returns:
@@ -326,18 +342,33 @@ def variable_density(values, times, x_positions, fig=None, figsize=(9,7), gain=0
     else:
         ax = fig.gca()
     
-    vmax, vmin = np.amax(values), np.amin(values)
+    if not data_limits:
+        vmax, vmin = np.amax(values), np.amin(values)
+    else:
+        vmax, vmin = data_limits[1], data_limits[0]
+    max_val = max(np.abs(vmax),np.abs(vmin))
     extent=(x_positions[0], x_positions[-1], times[-1], times[0]) 
     data = np.rot90(values,k=3)[:,::-1] * (gain/10.0+1.0)
-    plt.imshow(data, extent=extent, vmax=vmax, vmin=vmin,
-                cmap='binary', aspect='auto')
+    plt.imshow(data, extent=extent, vmax=max_val, vmin=-max_val,
+                cmap=color_map, aspect='auto')
 
     if plot_picks_dir:
-        plot_picks(ax, plot_picks_dir, pick_errors)
+        plot_picks(ax, plot_picks_dir, pick_errors, marker='', color='black', picks_offset=picks_offset)
+
+    if not xlim:
+        xlim=(x_positions[0], x_positions[-1])
+
+    color_key, color_data = None, None
+    if colorbar:
+        color_key = color_map
+        if not data_limits:
+            color_data = [-max_val,max_val]
+        else:
+            color_data = data_limits
 
     fig, ax = format_fig(fig, ax, xlab=xlab, ylab='Time ($\mu$s)', 
-                      xlim=(x_positions[0], x_positions[-1]), 
-                         ylim=(min(times[-1], tmax), 0.0), **kwargs)
+                    xlim=xlim, ylim=(min(times[-1], tmax), 0.0), 
+                    color_key=color_key, color_data=color_data, **kwargs)
 
     return fig
 
@@ -346,7 +377,8 @@ def all_traces(values, times, fig=None, figsize=(8,6),
                 tmax=1e20, title=None, ylab='Amplitude', show=True,
                 save_dir=False, plot_picks_dir=None, pick_errors=None,
                 picks_offset=None, legend=False, show_orientation=False, 
-                 position=None, inset_params=None, marker='', **kwargs):
+                 position=None, inset_params=None, marker='',
+                 xlim=None, pick_marker_kwargs=None, **kwargs):
     '''
     Function to plot all the traces given in values as a time series
     on the same axis
@@ -361,7 +393,11 @@ def all_traces(values, times, fig=None, figsize=(8,6),
         --ylab: The y label for the plot
         --show: Set to True to show the plot
         --save_dir: The directory (or list of directories) to save the figure to.
-        --plot_picks_dir: The directory where wave arrival picks are saved
+        --plot_picks_dir: The directory where wave arrival picks are saved. This
+            can also be a list of equal length to the number of traces in values,
+            where the picks directories for each trace are given. The pick at 
+            the location given in position is plotted. Position may also be a
+            list of positions, one for each trace.
         --pick_errors: Which wave arrival pick errors to plot.
                        One of 'both', 'early', 'late', or None.
         --picks_offset: The amount to offset the arrival time picks from the
@@ -370,9 +406,13 @@ def all_traces(values, times, fig=None, figsize=(8,6),
         --show_orientation: Plot the orienation of an anisotropic rock.
                   show_orientation is the dictionary of kwargs for the plotting
                   function.
-        --position: Position of the trace, if a single trace is plotted.
+        --position: Position of the trace, if a single trace is plotted. Can
+            also be a list of positions if multiple traces are plotted.
         --inset_params: A dictioanry containing parameters for a zoomed inset
         --marker: A marker to plot with
+        --xlim: The x axis limits for the plot
+        --pick_marker_kwargs: Properties for the pick markers (dictionary of
+            kwargs)
         --**kwargs: The keyword arguments for the plotting
         
     Returns:
@@ -391,20 +431,36 @@ def all_traces(values, times, fig=None, figsize=(8,6),
     format_dict = kwargs.copy()     
     [format_dict.pop(key) for key in list(format_dict.keys()) if key not in inspect.getargspec(format_fig)[0]]
     
+    lines = []
     for value in values:
-        ax.plot(times, value, marker=marker, **plot_kwargs)
+        lines.append(ax.plot(times, value, marker=marker, **plot_kwargs))
 
     if plot_picks_dir:
-        plot_picks(ax, plot_picks_dir, pick_errors, picks_offset=picks_offset)
+        if isinstance(plot_picks_dir, list):
+            for i in range(len(plot_picks_dir)):
+                if isinstance(position, list):
+                    plot_picks(ax, plot_picks_dir[i], pick_errors, picks_offset=picks_offset, 
+                                line=lines[i], position=position[i], **pick_marker_kwargs)
+                else:
+                    plot_picks(ax, plot_picks_dir[i], pick_errors, picks_offset=picks_offset, 
+                                line=lines[i], position=position, **pick_marker_kwargs)
+        else:
+            plot_picks(ax, plot_picks_dir, pick_errors, picks_offset=picks_offset, line=lines[0], 
+                                position=position, **pick_marker_kwargs)
     
     if show_orientation:    #Very specific application for rock anisotropy. Remove if not needed.
         fig = plot_anisotropy_reference(fig, angle=position, **show_orientation)
+        
+    if not xlim:
+        xlim = (max(0.0,times[0]), min(times[-1], tmax))
+    fig, ax = format_fig(fig, ax, title=title, xlab='Time ($\mu$s)', ylab=ylab,
+                        xlim=xlim, save_dir=None, show=False, legend=legend, **format_dict)  
+
     if inset_params:
         ax = zoomed_inset(fig, ax, **inset_params)
-        
-    fig, ax = format_fig(fig, ax, title=title, xlab='Time ($\mu$s)', ylab=ylab,
-                            xlim=(max(0.0,times[0]), min(times[-1], tmax)),  
-                            save_dir=save_dir, show=False, legend=legend, **format_dict)  
+
+    # Just for saving
+    format_fig(fig, ax, save_dir=save_dir, show=False, tick_fontsize=None)
 
     if show:        
         plt.show()
@@ -459,7 +515,8 @@ def picks_from_csv(filename, s_waves=False, s_wave_key=None):
 def plot_picks(ax, picks_dir, which_errors, color='r', polar=False,
                sample_diameter=None, label='', picks_offset=0., 
                picks_xlim=None, linewidth=1.5, s_waves=False, 
-               s_wave_key=None, picks_x=False, **kwargs):
+               s_wave_key=None, picks_x=False, line=None, 
+               position=0., **kwargs):
     '''
     Function to plot the wave arrival picks.
     
@@ -481,10 +538,16 @@ def plot_picks(ax, picks_dir, which_errors, color='r', polar=False,
         --s_wave_key: The header key for the type of s_wave, if
             s_wave is True
         --picks_y: True if time is on the x axis
+        --line: A line2D object to plot a signle arrival time pick on
+            as a vertical bar.
+        --position: If line is given, this is the position in the picks
+            file that the line corresponds to.
         --**kwargs: The keyword arguments for the plotting
         
     Return:
         --ax: The axis with the picks plotted
+        --x_pos: The x position of the plotted pick
+        --line: The line plotted on the axis
     '''    
 
     headers, picks_data = picks_from_csv(picks_dir, s_waves=s_waves, s_wave_key=s_wave_key)
@@ -503,14 +566,17 @@ def plot_picks(ax, picks_dir, which_errors, color='r', polar=False,
             x_pos = np.deg2rad(x_pos)
         
         p_picks = picks_data[1]
-        if not picks_x:
-            ax.plot(x_pos[indices[0]], p_picks[indices[0]], linewidth=linewidth, color=color,
-                    label=label, **kwargs)
+        if not picks_x and not line:
+            line = ax.plot(x_pos[indices[0]], p_picks[indices[0]], linewidth=linewidth, color=color,
+                    label=label, **kwargs)[0]
             error_function = ax.fill_between
-        else:
-            ax.plot(p_picks[indices[0]], x_pos[indices[0]], linewidth=linewidth, color=color,
-                    label=label, **kwargs)
+        elif not line:
+            line = ax.plot(p_picks[indices[0]], x_pos[indices[0]], linewidth=linewidth, color=color,
+                    label=label, **kwargs)[0]
             error_function = ax.fill_betweenx
+        else:
+            pos = np.argmin(np.abs(x_pos-position))
+            ax = pick_marker(ax, p_picks[pos], line=line, line_height=0.2, **kwargs)
     
         if which_errors == 'early' or which_errors == 'both':
             error_function(x_pos[indices[1]], picks_data[2][indices[1]],
@@ -519,12 +585,14 @@ def plot_picks(ax, picks_dir, which_errors, color='r', polar=False,
             error_function(x_pos[indices[2]], picks_data[3][indices[2]], 
                     p_picks[indices[2]], color=color, alpha=0.2)    
     
-    return ax, x_pos[indices[0]]
+        return ax, x_pos[indices[0]], line, [picks_data[1][indices[0]],picks_data[2][indices[1]],picks_data[3][indices[2]]]
     
+    return ax, None, line, None
 
 def arrival_times_plot(picks_dirs, polar=True, fig=None, figsize=(8,8),
                        title='', show=True, save_dir=None, pick_errors=None,
-                       labels=None, legend_loc=None, color='orange', **kwargs):
+                       labels=None, legend_loc=None, color='orange', 
+                       xlim=None, markers=None, colors=None, **kwargs):
     '''
     Function create a plot of just the arrival time picks
     
@@ -542,6 +610,9 @@ def arrival_times_plot(picks_dirs, polar=True, fig=None, figsize=(8,8),
         --legend_loc: The position of the legend
         --color: A color for the sequential colormap. Can be 'grey', 'purple',
             'green', 'blue', orange', or 'red'.
+        --xlim: The x limits for the plot
+        --markers: A set of markers if more than one picks_dir is given
+        --colors: A set of colors if more than one picks_dir is given
         --**kwargs: The keyword arguments for the plotting
         
     Returns:
@@ -567,23 +638,31 @@ def arrival_times_plot(picks_dirs, polar=True, fig=None, figsize=(8,8),
     
     if not labels:
         labels = ['']*len(picks_dirs)
-    markers = ['x','.','+','d','*','s']
-    colors = ['r','b','g','y','c','m']
+    if not markers:
+        markers = ['x','.','+','d','*','s']
+    if not colors:
+        colors = ['#d94901', '#2272b5','r','#6a52a3','g','y','c','b']
+    lines, all_picks = [], []
     for i in range(len(picks_dirs)):
-        ax, x_pos = plot_picks(ax, picks_dirs[i], pick_errors, color=colors[i%6], polar=polar,
-                   label=labels[i], marker=markers[i%6], **plot_kwargs) 
+        ax, x_pos, line, picks = plot_picks(ax, picks_dirs[i], pick_errors, color=colors[i%len(colors)], polar=polar,
+                   label=labels[i], marker=markers[i%len(markers)], **plot_kwargs) 
+        lines.append(line)
+        all_picks.append(picks)
     
-    fig, ax = format_fig(fig, ax, title, save_dir=save_dir, show=show, grid=polar,
-                         legend_loc=legend_loc, polar=polar,
-                         xlim=(x_pos[0],x_pos[-1]),**format_dict)
+    if not xlim:
+        xlim=(x_pos[0],x_pos[-1])
 
-    return fig     
+    fig, ax = format_fig(fig, ax, title, save_dir=save_dir, show=show, grid=polar,
+                         legend_loc=legend_loc, polar=polar, lines=lines,
+                         xlim=xlim,**format_dict)
+
+    return fig, all_picks     
 
 
 def spread_waveform_plot(values, times, indep_var, fig=None, figsize=(8,6),
                 amp_factor=2.0,tmax=1e20, xlab=r'Time ($\mu$s)', ylab='Pressure (MPa)', 
-                plot_picks_dir=None, pick_errors=None, picks_offset=0.,
-                picks_kwargs={}, labels=None, **kwargs):
+                time_vertical=False, picks_to_plot=[], labels=None, picks_label=None, 
+                ylim=None, **kwargs):
     '''
     Plots waveforms as a function of pressure (or
     any other varibale for that matter). Essentially
@@ -602,14 +681,12 @@ def spread_waveform_plot(values, times, indep_var, fig=None, figsize=(8,6),
         --tmax: The maximum time to plot for
         --xlab: The x label for the plot
         --ylab: The y label for the plot
-        --plot_picks_dir: The directory where wave arrival picks are saved,
-            if they are to be plotted
-        --pick_errors: Which wave arrival pick errors to plot.
-            One of 'both', 'early', 'late', or None.
-        --picks_offset: The amount to offset the arrival time picks from the
-            saved positions
-        --picks_kwargs: keyword arguments for the plotting of the picks.
-        --labels: labels for each of teh traces
+        --time_vertical: True to plot the time on the y axis of the plot
+        --picks_to_plot: A list of (x,y) tuples corresponding to the
+            arrival time picks to plot. The spread values must
+            not be added to the y values.
+        --picks_label: A labels for a legend of the picks line
+        --ylim: The ylimits of the plot
         --**kwargs: Keyqord arguments for figure formatting/saving 
             (see format_fig and matplotlib plot)
 
@@ -633,13 +710,26 @@ def spread_waveform_plot(values, times, indep_var, fig=None, figsize=(8,6),
 
     for i, value in enumerate(values):
         plot_kwargs['label'] = labels[i]
-        ax.plot(times, value*amp_factor+indep_var[i], **plot_kwargs)
+        x, y = times, value*amp_factor+indep_var[i]
+        if time_vertical:
+            x, y = value*amp_factor+indep_var[i], times
+        ax.plot(x, y, **plot_kwargs)
 
-    if plot_picks_dir:
-        plot_picks(ax, plot_picks_dir, pick_errors, picks_x=True, picks_offset=picks_offset,**picks_kwargs)
-        
-    fig, ax = format_fig(fig, ax, xlab=xlab, ylab=ylab, xlim=(max(0.0,times[0]),
-                        min(times[-1], tmax)), **format_dict)  
+    if len(picks_to_plot) > 0:
+        x_vals, y_vals = tuple(zip(*picks_to_plot))
+        y_vals = [y_vals[i]*amp_factor+indep_var[i] for i in range(len(y_vals))]
+        x, y = x_vals, y_vals
+        if time_vertical:
+            x, y = y_vals, x_vals
+        ax.plot(x, y, lw=1.5,c='k',marker='', label=picks_label)
+        if picks_label:
+            format_dict['legend']=True
+    
+    xlim, ylim = (max(0.0,times[0]),min(times[-1], tmax)), ylim
+    if time_vertical:
+        xlim, ylim = ylim, (min(times[-1], tmax),max(0.0,times[0]))
+        xlab, ylab = ylab, xlab
+    fig, ax = format_fig(fig, ax, xlab=xlab, ylab=ylab, xlim=xlim, ylim=ylim, **format_dict)  
 
     return fig
 
@@ -767,7 +857,7 @@ def wv_spect(values, times, fig=None, figsize=(8,10), trace_ylab=None,
     if not max_freq:
         max_freq = sampling_rate / 2.
     
-    wv = wigner_ville_spectrum(values, 1/sampling_rate, 5.5, smoothing_filter='gauss')
+    wv = wigner_ville_spectrum(values, 1/sampling_rate, 1, smoothing_filter='gauss')
         
     frequency_divider = sampling_rate / 2. / max_freq
     if frequency_divider > 1.1:
@@ -796,7 +886,7 @@ def wv_spect(values, times, fig=None, figsize=(8,10), trace_ylab=None,
     if number_of_plots > 2:
         [fig.add_subplot(gs[i], sharex=ax1) for i in range(4, number_of_plots*2-1,2)]
     
-    ax1.plot(times, values, 'k')          #Plot the waveform
+    ax1.plot(times, values, 'k', marker='')          #Plot the waveform
     ax1.xaxis.set_tick_params(direction='in') 
     
     extent = (times[0], times[-1], min_freq/1e3, max_freq/1e3)
@@ -950,11 +1040,91 @@ def plot_anisotropy_reference(fig, angle=0., initial_angle=0.0, clockwise=False,
     
     return fig
     
+
+def psd_spectrum(values, times, sampling_rate, figsize=(8,9), tmax=1e20, 
+                 title=None, ylab='Amplitude', plot_picks_dir=None, plot_trace=True,
+                 pick_errors=None, max_freq=2000, fig=None, normalise_spectra=False,
+                 min_freq=0., **kwargs):
+    '''
+    Function to plot the spectral power of a trace calculated using
+    the scipy periodogram function
+
+    Arguments:
+        --values: A array of the amplitude values
+        --times: An array of times against which the values are plotted
+        --sampling_rate: The sampling rate of the data in seconds
+        --figsize: The figure size of the plot
+        --tmax: The maximum time to plot for
+        --title: A title for the plot
+        --ylab: The y label for the plot
+        --plot_picks_dir: The directory where wave arrival picks are saved
+        --plot_trace: True to plot the trace as well as the PSD
+        --pick_errors: Which wave arrival pick errors to plot.
+                       One of 'both', 'early', 'late', or None.
+        --max_freq: The maximum frequency to plot for, in kHz
+        --fig: A fig to plot on
+        --normalise_spectra: True to plot each spectral line between 0 and 1.
+        --min_freq: The minimum frequency to plot
+        --**kwargs: The keyword arguments for the plotting
+        
+    Returns:
+        --fig: The figure instance
+
+    '''
+    from scipy.signal import periodogram
+
+    units = 'nm$^2$/Hz'
+
+    if plot_trace:
+        fig, (ax1, ax2) = plt.subplots(2,1, figsize=figsize, gridspec_kw={'height_ratios':[1, 2]})
+        plt.sca(ax1)
+    elif not fig:
+        fig, ax2 = plt.subplots(1,1, figsize=figsize)
+    else:
+        ax2 = plt.gca()
+    
+    plot_kwargs = kwargs.copy()
+    [plot_kwargs.pop(key) for key in list(plot_kwargs.keys()) if key in inspect.getargspec(format_fig)[0]]
+    format_dict = kwargs.copy()     
+    [format_dict.pop(key) for key in list(format_dict.keys()) if key not in inspect.getargspec(format_fig)[0]]
+    
+    if plot_trace:
+        format_kwargs = {key:val for key ,val in format_dict.items() if key not in ['show','save_dir']}
+        fig = all_traces([values], times, fig=fig,tmax=tmax, title=title, ylab=ylab, show=False, **plot_kwargs,**format_kwargs)
+    
+    #Calculate and plot the multitaper spectrum
+    nex_pow2 = np.ceil(np.log2([len(values)])[0])
+    freq, spec = periodogram(values, fs=sampling_rate, nfft=2**int(nex_pow2))
+    freq /= 1e3
+    freq, spec = freq[2:], spec[2:]   # Remove the first couple of samples, which are usually very negative
+    freq_inds = np.where(freq > min_freq)
+    freq, spec = freq[freq_inds], spec[freq_inds]
+    freq_inds = np.where(freq < max_freq)
+    freq, spec = freq[freq_inds], spec[freq_inds]
+    if normalise_spectra:
+        if isinstance(normalise_spectra, float):
+            print('ok')
+            spec /= normalise_spectra
+        else:
+            spec /= np.max(spec)
+        units = 'arb. units'
+    line = ax2.semilogy(freq, spec, **plot_kwargs)
+
+    if plot_picks_dir:
+        plot_picks(ax1, plot_picks_dir, pick_errors)
+
+    xlim=(min_freq, min(sampling_rate/2,max_freq))
+
+    fig, ax = format_fig(fig, ax2, title=None, xlab='Frequency (kHz)', ylab='Power Spectral Density ({})'.format(units),
+                            xlim=xlim, **format_dict)
+    
+    return fig   
+
     
 def multitaper_spect(values, times, sampling_rate, figsize=(8,9), tmax=1e20, 
                  title=None, ylab='Amplitude', plot_picks_dir=None, plot_trace=True,
                  pick_errors=None, max_freq=2000, fig=None, normalise_spectra=False,
-                 plot_uncertainties=False, **kwargs):
+                 plot_uncertainties=False, min_freq=0, **kwargs):
     '''
     Function to plot the spectral power of a trace calculated using
     a multitaper spectrum.
@@ -975,6 +1145,7 @@ def multitaper_spect(values, times, sampling_rate, figsize=(8,9), tmax=1e20,
         --fig: A fig to plot on
         --normalise_spectra: True to plot each spectral line between 0 and 1.
         --plot_uncertainties: True to plot the uncertainties for the spectra.
+        --min_freq: The minimum frequency to plot
         --**kwargs: The keyword arguments for the plotting
         
     Returns:
@@ -1004,12 +1175,16 @@ def multitaper_spect(values, times, sampling_rate, figsize=(8,9), tmax=1e20,
     #Calculate and plot the multitaper spectrum
     nex_pow2 = np.ceil(np.log2([len(values)])[0])
     spec, freq, jackknife, _, _ = mtspec(
-        data=values, delta=1/sampling_rate, time_bandwidth=4,
+        data=values, delta=1/sampling_rate, time_bandwidth=5.,
         statistics=True)#, nfft=2**int(nex_pow2))
     freq /= 1e3
     if normalise_spectra:
-        spec /= np.max(spec)
-        units = 'a.u.'
+        if isinstance(normalise_spectra, float):
+            print('ok')
+            spec /= normalise_spectra
+        else:
+            spec /= np.max(spec)
+        units = 'arb. units'
     line = ax2.semilogy(freq, spec, **plot_kwargs)
 
     if plot_uncertainties:
@@ -1019,7 +1194,7 @@ def multitaper_spect(values, times, sampling_rate, figsize=(8,9), tmax=1e20,
         plot_picks(ax1, plot_picks_dir, pick_errors)
 
     fig, ax = format_fig(fig, ax2, title=None, xlab='Frequency (kHz)', ylab='Power Spectral Density ({})'.format(units),
-                            xlim=(0, min(sampling_rate/2,max_freq)), **format_dict)
+                            xlim=(min_freq, min(sampling_rate/2,max_freq)), **format_dict)
     
     return fig   
     
@@ -1052,6 +1227,11 @@ def cross_correlation(a, b, sampling_rate, fig=None, figsize=(8,6), plot=True, *
     elif plot:
         ax = fig.gca()
     
+    plot_kwargs = kwargs.copy()
+    [plot_kwargs.pop(key) for key in list(plot_kwargs.keys()) if key in inspect.getargspec(format_fig)[0]]
+    format_dict = kwargs.copy()     
+    [format_dict.pop(key) for key in list(format_dict.keys()) if key not in inspect.getargspec(format_fig)[0]]
+
     norm_factor = (np.sum(a ** 2)) ** 0.5 * (np.sum(b ** 2)) ** 0.5
     corr = correlate(a-np.mean(a),b-np.mean(b)) / norm_factor
     times = np.arange(-np.floor(len(corr)/2),np.floor(len(corr)/2)+1) * 1. / sampling_rate * 1e6
@@ -1059,16 +1239,17 @@ def cross_correlation(a, b, sampling_rate, fig=None, figsize=(8,6), plot=True, *
     max_lag = times[np.argmax(np.abs(corr))] * -1.  #Needs to be multiplied by -1 to get sign of max_lag correct
 
     if plot:
-        ax.plot(times,corr)
+        ax.plot(times,corr, **plot_kwargs)
         ax.axvline(x=max_lag, linestyle='--', linewidth=1,color='r')
         ax.text(0.05,0.9, '$r_{max}$='+str(max_lag), transform=ax.transAxes)
         
-        fig, ax = format_fig(fig, ax, xlab='Lag Time ($\mu$s)',xlim=(times[0],times[-1]), **kwargs)
+        fig, ax = format_fig(fig, ax, xlab='Lag Time ($\mu$s)',xlim=(times[0],times[-1]), **format_dict)
     
     return fig, max_lag
     
     
-def zoomed_inset(fig, ax, region=[1,2,1,2], zoom=2, aspect=2, inset_loc=2):
+def zoomed_inset(fig, ax, region=[1,2,1,2], zoom=2, aspect=2, inset_loc=2,
+                axis_ticks=False, manual_loc=None, manual_marks=None):
     '''
     Function to plot a zoomed inset on a plot. The region of
     data to be zoomed is specified, along with the amount of zoom,
@@ -1086,6 +1267,14 @@ def zoomed_inset(fig, ax, region=[1,2,1,2], zoom=2, aspect=2, inset_loc=2):
         --inset_loc: The location to place the inset on the main axis
                1 is upper left, 2 is lower left, 3 is lower right, and
                4 is upper right
+        --axis_ticks: False to hide the axis ticks of the inset, True
+            to display the ticks, 'x' for x only, or 'y' for y only
+        --manual_loc: Manual override of the inset position. Given
+            list of two floats: [xloc, yloc] of (right, top)
+        --manual_marks: Manual override of the marker lines which  
+            denote the inset. A list of two integers from 1-4
+            corresponding to the corners to use. Can also have
+            -1 for no marker on a corner.
                
     Returns:
         --ax: The main axis, with the inset axis plotted on it
@@ -1113,9 +1302,23 @@ def zoomed_inset(fig, ax, region=[1,2,1,2], zoom=2, aspect=2, inset_loc=2):
     else:
         yloc = ((ax_yhigh-ax_ylow)*.98+ax_ylow)+(region[3]-region[2])*zoom*(.5-.5/aspect)
     
-    axins = zoomed_inset_axes(ax, zoom,axes_kwargs={'aspect':ax_aspect/aspect},bbox_transform=ax.transData,bbox_to_anchor=[xloc,yloc], borderpad=0.0)  
+    if not manual_loc:
+        bbox = [xloc,yloc]
+    else:
+        bbox = manual_loc
+
+    axins = zoomed_inset_axes(ax, zoom,axes_kwargs={'aspect':ax_aspect/aspect},bbox_transform=ax.transData,bbox_to_anchor=bbox, borderpad=0.0)  
     
-    mark_inset(ax, axins, loc1=2-inset_loc%2, loc2=4-inset_loc%2, fc="none", ec="0.5")
+    #Using a loop simply to utilise break functionality
+    for dummy_var in '1':
+        if not manual_marks or not isinstance(manual_marks,list) or len(manual_marks) != 2:
+            mark1 = 2-inset_loc%2
+            mark2 = 4-inset_loc%2
+        else:
+            if manual_marks[0] == None or manual_marks[1]==None:
+                break
+            mark1, mark2 = manual_marks[0], manual_marks[1]
+        mark_inset(ax, axins, loc1=mark1, loc2=mark2, fc="none", ec="0.5")
     
     for line in ax.get_lines():
        new_line = axins.plot(line.get_xdata(),line.get_ydata(), marker='')
@@ -1126,15 +1329,18 @@ def zoomed_inset(fig, ax, region=[1,2,1,2], zoom=2, aspect=2, inset_loc=2):
     axins.set_xlim(region[0], region[1])
     axins.set_ylim(region[2], region[3])
     
-    axins.set_xticks([])
-    axins.set_yticks([])
+    if not axis_ticks or axis_ticks == 'x':
+        axins.set_yticks([])
+    if not axis_ticks or axis_ticks == 'y':
+        axins.set_xticks([])
+    axins.tick_params(axis='both',direction='in',labelsize=11.0)
     
     return ax
     
     
 def get_integer_ticks(minv, maxv):
     '''
-    Small function which trys to get integer ticks
+    Small function which tries to get integer ticks
     for an axis based on the max and min values
     '''
 
@@ -1159,8 +1365,127 @@ def get_integer_ticks(minv, maxv):
 
     return ticks
 
+def pick_marker(ax, pick, line=None, line_height=0.2,
+                absolute_height=None,marker='s',
+                markersize=3.,**kwargs):
+    '''
+    Function to plot a vertical bar at the location
+    of an arrival time pick on a waveform plot
 
-def set_color_cycle(colors_=None,markers_=None):
+    Arguments:
+        --ax: The axis to plot the pick on
+        --pick: The arrival time pick
+        --line: The line2D object of the waveform which
+            the pick refers to. If not given, the first
+            plotted line on the axis will be used.
+        --line_height: The height of the vertical marker
+            bar (value between 0 and 1 where 1 is the full
+            height of the axis)
+        --marker: The type of marker to use
+        --markersize: The size of the marker
+        --kwargs: The keyword arguments for the marker
+        
+    Returns:
+        --ax: The axis object        
+    '''
+
+    if not line:
+        line = ax.lines[0]
+    
+    try:
+        y_data, x_data = line.get_ydata(), line.get_xdata()
+    except AttributeError:
+        line = line[0]
+        y_data, x_data = line.get_ydata(), line.get_xdata()
+    
+    line_color = line.get_color()
+    if 'color' not in kwargs:
+        if 'c' not in kwargs:
+            m_color = line_color
+        else:
+            m_color = kwargs.pop('c')
+    else:
+        m_color = kwargs.pop('color')
+
+    pick_index = np.argmin(np.abs(x_data-pick))
+    pick_y = y_data[pick_index]
+
+    y_min, y_max = ax.get_ylim()
+    x_min, x_max = ax.get_xlim()
+    x_range, y_range = x_max-x_min, y_max-y_min
+
+    if not absolute_height:
+        y_coord1 = pick_y - line_height/2 * y_range
+        y_coord2 = pick_y + line_height/2 * y_range
+    else:
+        y_coord1 = pick_y - absolute_height/2
+        y_coord2 = pick_y + absolute_height/2 
+
+    ax.plot([pick]*2,[y_coord1, y_coord2], marker='',c='k',**kwargs)
+    ax.plot(pick,y_coord2,marker=marker,markersize=markersize,color=m_color)
+
+    return ax
+
+def plot_arrow(fig, ax, base_pos, head_pos, width=1,
+                head_length=.5, head_width=.5, head_angle=0, 
+                color='k', show=False, save_dir=None):
+    '''
+    Function to plot an arrow on a figure
+
+    Arguments:
+        --fig: The figure to plot on
+        --ax: The axis to plot onto
+        --base_pos: An (x, y) tuple specifying the position
+            of the arrow base, in data coordinates
+        --head_pos: An (x, y) tuple specifying the position
+            of the arrow head, in data coordinates
+        --width: The width of the arrow (in plotting width)
+        --head_length: The length of the arrow head, as a
+            fraction of the total arrow length.
+        --head_width: The width of the arrow head, as a fraction
+            of the head_length
+        --head_angle: The amount to sweep in the back of the
+            arrow head, as a fraction between 0 and 1
+        --color: The color of the arrow.
+        --show: True to show the figure after the arrow is plotted.
+        --save_dir: A directory to save the figure to afterward.
+
+    Returns:
+        --fig: The figure
+        --ax: The axis
+    '''
+
+    xlims, ylims = ax.get_xlim(), ax.get_ylim()
+    corr = (xlims[1]-xlims[0])/(ylims[1]-ylims[0])
+
+    x0, y0 = base_pos[0], base_pos[1]
+    x1, y1 = head_pos[0], head_pos[1]
+    angle = np.arctan((y1-y0)/((x1-x0)/corr))
+    length = np.linalg.norm(np.array(head_pos)-np.array(base_pos))
+
+    head_length = head_length*length
+    head_width = head_width*head_length
+    head_angle = head_angle%1.
+    
+    cosi, sini = np.cos(angle), np.sin(angle)
+    base_x, base_y = x1-head_length*cosi*corr, y1-head_length*sini
+    ar1_x, ar1_y = base_x+(sini*(head_width/2))*corr, base_y-cosi*head_width/2
+    ar2_x, ar2_y = base_x-(sini*(head_width/2))*corr, base_y+cosi*head_width/2
+    ar3_x, ar3_y = base_x+(head_angle*head_length)*cosi*corr, base_y+(head_angle*head_length)*sini
+
+    plt.sca(ax)
+    ax.plot([x0,ar3_x],[y0,ar3_y],color=color,lw=width,marker='')
+    head = plt.Polygon([[ar1_x,ar1_y],[x1,y1],[ar2_x,ar2_y],[ar3_x,ar3_y]],color=color)
+    
+    ax.add_patch(head)
+
+    # Just for saving
+    format_fig(fig, ax, save_dir=save_dir, show=show, tick_fontsize=None)
+
+    return fig, ax
+
+
+def set_color_cycle(colors_=None,markers_=None, only_colors=True):
     '''
     Function to set the color cylcle
     '''
@@ -1172,13 +1497,15 @@ def set_color_cycle(colors_=None,markers_=None):
         mpl.rcParams['axes.prop_cycle'] = cycler(c=colors_,marker=markers)
     elif markers_:
         mpl.rcParams['axes.prop_cycle'] = cycler(c=colors,marker=markers_)
-    else:
+    elif not only_colors:
         mpl.rcParams['axes.prop_cycle'] = cycler(c=colors,marker=markers)
+    elif only_colors:
+        mpl.rcParams['axes.prop_cycle'] = cycler(c=colors)
 
 
 
 #blue, red, Purple,  green, orange,  yellow
-colors = ['#2272b5','r','#6a52a3', '#248c45','#d94901','#feaa38']   #Another red: '#cc191d'
+colors = ['#feaa38', '#2272b5','r', '#6a52a3','#248c45','#d94901']   #Another red: '#cc191d'  #['#6a52a3','#248c45']#
 markers = ['s','o','^','d','x','+']
 set_color_cycle()
 

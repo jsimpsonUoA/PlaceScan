@@ -101,7 +101,7 @@ class C13Calculator():
 
         #Plot the results:
         if plot_c13:
-            self.plot_result(ylim=(3000,6000))
+            self.plot_result()
 
     def find_c13(self):
         '''

@@ -394,7 +394,7 @@ def assign_percentage_errors(filename, percentage, constant_early_err=0.0, const
     a certain percentage of that pick. The percentage is given
     as a value between 0 and 100. Also, after the percentage
     error has been calculated, a constant error may be added
-    to hte percentage error (these are given as constant_early_err
+    to the percentage error (these are given as constant_early_err
     and constant_late_err). No errors are kept from the previously
     saved version, so be careful!!!! Note: constant_early_err should
     be a negative number, and constant_late_err should be a positive
@@ -452,7 +452,8 @@ def smooth_picks_by_av(filename, num_of_traces=3):
 
 class AICPicker():
     def __init__(self, data, times, x_pos, amp_factor=10.,bounds=None,
-                plot_bounds=True, preferred_bound=None, plot_example=False):
+                plot_bounds=True, preferred_bound=None, plot_example=False,
+                title=''):
         '''
         AICPicker is a Python class to pick the wave arrival times based on the
         Akaike Information Criterion. See [paper] for info. All that is required
@@ -481,6 +482,7 @@ class AICPicker():
             --plot_bounds: True to plot the bounds on the manual picking plot
             --plot_example: False, or an x_pos to plot an example of the trace 
                 with the AIC function and pick
+            --title: A title for the plot
         '''
 
         self.data = np.atleast_2d(data)
@@ -493,6 +495,7 @@ class AICPicker():
         self.picks = np.zeros(self.num_t) - 1.
         self.warn = False
         self.preferred_bound = preferred_bound
+        self.title = title
 
         self.sort_bounds()
         self.get_picks()
@@ -638,7 +641,7 @@ class AICPicker():
         pick_y = []
         for i in range(self.num_t):
             data = self.data[i]*self.amp_factor+self.x_pos[i]
-            line, = plt.plot(self.times, data, 'k', linewidth=0.5)
+            line, = plt.plot(self.times, data, 'k', linewidth=0.5, marker='')
             ax.fill_between(self.times, data, self.x_pos[i], where=data>self.x_pos[i], color='black')
             new_points = np.column_stack((self.times, data))
             if i >0:
@@ -655,6 +658,7 @@ class AICPicker():
 
         plt.ylabel('Position')
         plt.xlabel('Time')
+        plt.title(self.title)
 
         fig.canvas.mpl_disconnect(fig.canvas.manager.key_press_handler_id)
         fig.canvas.mpl_connect('key_press_event', lambda event: self.update_fig(event, fig,

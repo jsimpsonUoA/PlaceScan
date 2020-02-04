@@ -101,7 +101,7 @@ def reposition_traces(x_pos, x_delta=None, x0=None, steps=0, flip=False):
     if x_delta:
         x_pos = np.arange(0.0, x_delta*len(x_pos), x_delta) + x_pos[0]
         
-    if x0:
+    if x0 != None:
         x_pos = x_pos+x0-x_pos[0]
 
     if steps:

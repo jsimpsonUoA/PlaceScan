@@ -147,7 +147,7 @@ class RPCalculator():
 
         try:
             with open(filename, 'r') as f:
-
+                
                 reader = list(csv.reader(f))
                 data_keys = reader.pop(0)[1:]
                 samples = [row.pop(0) for row in reader]
