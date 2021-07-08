@@ -1,0 +1,15 @@
+Metadata-Version: 1.1
+Name: dtw
+Version: 1.0.4
+Summary: An implementation of the Dynamic Time Warping algorithm
+Home-page: https://github.com/paul-freeman/dtw
+Author: Paul Freeman
+Author-email: paul.freeman.cs@gmail.com
+License: MIT License
+Description: UNKNOWN
+Platform: UNKNOWN
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Cython
+Classifier: Topic :: Scientific/Engineering :: Physics

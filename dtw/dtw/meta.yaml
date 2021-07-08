@@ -1,0 +1,31 @@
+package:
+    name: dtw
+    version: "{{ load_setup_py_data().version }}"
+
+source:
+    path: .
+
+build:
+    script: python setup.py install
+
+requirements:
+    build:
+        - python
+        - numpy <1.15
+
+    run:
+        - python
+        - numpy <1.15
+
+test:
+    requires:
+        - python
+        - numpy <1.15
+
+    import:
+        - dtw
+
+about:
+    home: https://github.com/paul-freeman/dtw
+    license: MIT
+    license_file: LICENSE
