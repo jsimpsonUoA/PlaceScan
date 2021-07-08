@@ -30,6 +30,10 @@ from placescan.main import PlaceScan
 
 A simple plotting example is provided, along with example data. The code has extensive documentation for all functions within main.py and the auxilliary scripts.
 
+# Note on DTW Module
+
+The dynamic time warping (DTW) picking routines within PlaceScan rely on the Dynamic Time Warping module written by Paul Freeman and available at [paul-freeman/dtw](https://github.com/paul-freeman/dtw). I have modified this algorithm slightly to accommodate a cost parameter, so I have included the package with PlaceScan. However, dtw is a standalone Python module and needs to be built using the instructions within the dtw/ folder before it can be used with PlaceScan.
+
 # Contact
 __Author:__ Jonathan Simpson, jsimpsonUoA
 
