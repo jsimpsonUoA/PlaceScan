@@ -66,8 +66,8 @@ def combine_scans(scans, append_index=0, reposition=False, save_dir='/tmp/tmp-Pl
         combined_scan.write(save_dir, update_npy=False)
         
         #Open the saved scan
-        from PlaceScan import PlaceScan
-        combined_scan = PlaceScan(save_dir, scan_type=combined_scan.scan_type, trace_field=combined_scan.trace_field)     
+        from placescan.main import PlaceScan
+        combined_scan = PlaceScan(save_dir,  trace_field=combined_scan.trace_field)     
     
     
         if save_dir[:4] == '/tmp':
@@ -175,10 +175,15 @@ def expand_updates(scan, rep_interval=1/20):
         stage_config = next(module['config'] for module in scan.config[scan.plugins_key] if 'Stage' in module["python_class_name"])  #Not called 'python_class_name' for <0.7
     else:
         stage_config = next(module['config'] for name,module in scan.config[scan.plugins_key].items() if 'ATS' in name)
-    start = stage_config['start']
-    vel = stage_config['velocity']
+    
     tot_num = scan.trace_data.shape[0]*scan.trace_data.shape[2]
-    end = rep_interval*vel*(tot_num-1)
+    
+    try:
+        start = stage_config['start']
+        vel = stage_config['velocity']
+        end = rep_interval*vel*(tot_num-1)
+    except KeyError:
+        start, end = 0, tot_num-1
     
     scan.x_positions = np.linspace(start, end, tot_num)+pos_0
     

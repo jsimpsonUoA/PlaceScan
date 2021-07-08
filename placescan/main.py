@@ -25,7 +25,7 @@ import json
 import pickle
 import csv
 
-from scipy.signal import detrend
+from scipy.signal import detrend as dt_func
 
 import placescan.organising as org
 import placescan.plotting as plot
@@ -35,8 +35,9 @@ import placescan.analysis as analysis
 class PlaceScan():
     
     def __init__(self, directory, data_filename=None, scan_name=None, sample=None,
-                scan_type='rotation', trace_field='ATS660-trace', apply_formatting=True, 
-                divide_energy=False):
+                trace_field=None, scan_type=None, apply_formatting=True, 
+                divide_energy=False, correct_time_delay=True,calibrate_amps=True,
+                polytec_decoder=None):
         '''
         Initialise a PlaceScan object. A PlaceScan object is a 
         Python object representation of the experimental data
@@ -56,14 +57,15 @@ class PlaceScan():
         and the scan_name and sample_name may be specified manually,
         via the respective kwargs.
 
-        Documentation for each methodis provided in the docstrings.
+        Documentation for each method is provided in the docstrings.
         '''
 
-
+        if directory[-1] != '/':
+            directory += '/'
         if not os.path.isdir(directory):
             raise IOError('Scan directory not found: "{}"'.format(directory))
         
-        self.scan_dir, self.scan_type = directory, scan_type
+        self.scan_dir = directory
 
         if not scan_name:
             self.scan_name = directory[directory[:-1].rfind('/')+1:-1]
@@ -99,7 +101,17 @@ class PlaceScan():
             self.plugins_key = 'modules'  
         else:
             self.plugins_key = 'plugins'                 
-            
+        
+        names = self.npy.dtype.names
+        trace_field_present = ['trace' in name for name in names]
+        for name in names:
+            if 'trace' in name and not trace_field:
+                if name == 'PlaceDemo-trace':
+                    if trace_field_present.count(True) == 1:
+                        trace_field = 'PlaceDemo-trace'
+                else:
+                    trace_field = name
+
         if trace_field:
 
             self.trace_field = trace_field
@@ -123,29 +135,32 @@ class PlaceScan():
                 print('Correcting times for Pre-amp')
                 self.time_delay += 0.7                #Be careful with this!
             '''
-                
-            self.times = np.arange(0.0, self.endtime+self.delta, self.delta)*1e6 - self.time_delay
-            self._true_amps()
-            self._get_energy_from_comments(divide_energy)
             
-            if scan_type == 'rotation':
-                try:
-                    self.x_positions = self.npy['ArduinoStage-position']
-                    self.stage = 'ArduinoStage-position'
-                except ValueError:
-                    self.x_positions = self.npy['RotStage-position']
-                    self.stage = 'RotStage-position'
-                self.data_index = 1
-            elif scan_type == 'linear':
-                try:
-                    self.x_positions = self.npy['LongStage-position']
-                    self.stage = 'LongStage-position'
-                except ValueError:
-                    self.x_positions = self.npy['ShortStage-position']
-                    self.stage = 'ShortStage-position'
-            elif scan_type == 'single':
+            self.data_index = 1   #this was a quick fix, but may be useful permanently. Not always 0 though if scan_type=='single'
+            self.times = np.arange(0.0, self.endtime+self.delta, self.delta)*1e6
+            if correct_time_delay:
+                self.times = self.times - self.time_delay
+            if calibrate_amps:
+                self._true_amps(polytec_decoder)
+            else:
+                self.amp_label = "Amplitude"
+            self.source_energy = self._get_energy_from_comments(divide_energy)
+            
+            if 'ArduinoStage-position' in names:
+                self.x_positions = self.npy['ArduinoStage-position']
+                self.stage = 'ArduinoStage-position'
+            elif 'RotStage-position' in names:
+                self.x_positions = self.npy['RotStage-position']
+                self.stage = 'RotStage-position'
+            elif 'LongStage-position' in names:
+                self.x_positions = self.npy['LongStage-position']
+                self.stage = 'LongStage-position'
+            elif 'ShortStage-position' in names:
+                self.x_positions = self.npy['ShortStage-position']
+                self.stage = 'ShortStage-position'
+            else:
                 self.x_positions = np.arange(0.,self.npy.shape[0])
-                self.data_index = 1   #this was a quick fix, but may be useful permanently. Not always 0 though if scan_type=='single'
+            
    
         #Open the formatting dictionary for the scan and apply formatting.
         if os.path.isfile(directory+'formatting.json'):
@@ -175,7 +190,10 @@ class PlaceScan():
             os.mkdir(save_dir)
 
         if update_npy and len(self.x_positions) == self.npy.shape[0]:
-            self.npy[self.stage] = self.x_positions
+            try:
+                self.npy[self.stage] = self.x_positions
+            except AttributeError:
+                pass
                     
         with open(save_dir+'config.json', 'w') as file:
             json.dump(self.config, file)
@@ -557,11 +575,11 @@ class PlaceScan():
         return fig
     
 
-    def trace_plot(self, normed=False, bandpass=None, dc_corr_seconds=None, 
+    def trace_plot(self, normed=False, bandpass=None, dc_corr_seconds=None, detrend=True,
                     differentiate=False, taper=None, trace_int=None, averaging=None, 
                     position=None, trace_index=None, save_dir=None, save_ext='', 
                     plot_picks=False, pick_type='p', tmin=0.0, tmax=1e20,
-                    window_around_p=None, picks_offset=0., **kwargs):
+                    window_around_p=None, picks_offset=0., ylab=None, **kwargs):
         '''
         Function to plot traces as a time series on the same axis
 
@@ -570,6 +588,7 @@ class PlaceScan():
             --bandpass: A tuple of (min_freq, max_freq) for a bandpass filter
             --dc_corr_seconds: The number of seconds at the beginning of the trace
                 to calcualte a DC shift correction from.
+            --detrend: True to detrend the data
             --differentiate: An integer specifying how many times the signal should
                 be differentiated. 
             --taper: A taper for the data. See _get_plot_data
@@ -586,6 +605,7 @@ class PlaceScan():
             --pick_type: The type/name of teh arrival to plot
             --tmin: The minimum time to plot for.
             --tmax: The maximum time to plot for
+            --ylab: A ylabel for the plot
             --kwargs: The keyword arguments for the trace plot
 
         Returns:
@@ -594,7 +614,7 @@ class PlaceScan():
         
         local_vars = locals(); del local_vars['self']
         plot_data, plot_times = self._get_plot_data(tmax, tmin, False, bandpass, dc_corr_seconds,
-                                                         differentiate=differentiate,taper=taper)
+                                                detrend=detrend, differentiate=differentiate,taper=taper)
 
         if trace_int != None:
             plot_data = plot_data[::trace_int]
@@ -607,7 +627,7 @@ class PlaceScan():
         elif position != None:
             plot_data = [plot_data[np.argmin(np.abs(self.x_positions-position))]]
         elif trace_index != None:
-            plot_data = [plot_data[trace_index]]
+            plot_data = plot_data[trace_index]
             position = self.x_positions[trace_index]
         
         if window_around_p:
@@ -622,7 +642,8 @@ class PlaceScan():
             picks_dir = self.scan_dir+self.scan_name+'_{}-picks.csv'.format(pick_type)
             
         save_dirs = self._get_master_dirs(save_dir, save_ext)
-        ylab = self.amp_label
+        if not ylab:
+            ylab = self.amp_label
         if normed:
             ylab = 'Amplitude (arb. unit)'
 
@@ -647,7 +668,7 @@ class PlaceScan():
                         the figures will be saved in the scan directory, and a
                         link will be made in the specified directory.
             --save_ext: The extension of the figure filename to describe the plot.
-            --pick_type: The type/name of teh arrival to plot
+            --pick_type: The type/name of the arrival to plot
             --kwargs: The keyword arguments for the plot
             
         Returns:
@@ -726,9 +747,9 @@ class PlaceScan():
         return fig, wv
     
     def spectrum(self, normed=False, bandpass=None, dc_corr_seconds=None, 
-                   position=None, trace_index=None, save_dir=None, save_ext='', 
-                   common_sample=False, plot_picks=False, tmin=0.0, tmax=None, 
-                   fig=None, **kwargs):
+                   averaging=None, position=None, trace_index=None, save_dir=None, 
+                   save_ext='', common_sample=False, plot_picks=False, tmin=0.0, 
+                   tmax=None, fig=None, **kwargs):
         '''
         Calcualte and plot the power spectral density using 
         the scipy periodogram function.
@@ -736,6 +757,14 @@ class PlaceScan():
         
         local_vars = locals(); del local_vars['self']
         plot_data, plot_times = self._get_plot_data(tmax, tmin, normed, bandpass=None, dc_corr_seconds=dc_corr_seconds)
+        
+        
+        if averaging != None:  #For averaging over updates
+            x = max(len(plot_data) // averaging, 1)
+            y = min(averaging, len(plot_data))
+            z = len(plot_data[0])
+            plot_data = plot_data.flatten()[:x*y*z].reshape((x,y,z))
+            plot_data = np.sum(plot_data, axis=1) / y
         
         if position != None:
             plot_data = plot_data[np.argmin(np.abs(self.x_positions-position))]
@@ -919,6 +948,7 @@ class PlaceScan():
             scans = [self]+scans
         
         averaging = [None]*len(scans)
+
         if position != None:
             if isinstance(position, list):
                 trace_inds = [np.argmin(np.abs(scans[i].x_positions-position[i])) for i in range(len(scans))]
@@ -927,10 +957,12 @@ class PlaceScan():
             print("PlaceScan Trace Comparison: Plotting comparsion at x-position {}."
                     .format(round(scans[0].x_positions[trace_inds[0]],5)))
         elif trace_index != None:
+
             if isinstance(trace_index, list):
                 trace_inds = trace_index
             else:
                 trace_inds = [trace_index]*num
+            print(scans[0].x_positions.shape,trace_inds[0])
             print("PlaceScan Trace Comparison: Plotting comparsion at x-position {}."
                     .format(round(scans[0].x_positions[trace_inds[0]],5)))
         elif average:
@@ -950,7 +982,7 @@ class PlaceScan():
         elif not labels:
             labels = [None]*num*2
             legend = False
-            
+        
         colors = ['c','g','r','y','b','m']    
         linestyles = ['-']#, ':', '-.', ':']
         if not spread_traces:
@@ -1087,11 +1119,11 @@ class PlaceScan():
             None
         '''
 
-        plot_data = self.trace_data[:,1,0].copy()
+        plot_data = self.trace_data[:,self.data_index,0].copy()
         
         if bandpass:
             plot_data = bandpass_filter(plot_data, bandpass[0], bandpass[1], self.sampling_rate)        
-        plot_data = normalize(plot_data)
+        plot_data = normalize(plot_data,mode=True)
         
         pk.manual_picker(plot_data, self.times, self.x_positions, **kwargs)
 
@@ -1490,7 +1522,7 @@ class PlaceScan():
 
     ########################  Private methods  ###############################
 
-    def _true_amps(self):
+    def _true_amps(self, polytec_decoder):
         '''
         Function to transform the data to absolute amplitudes
         and generate the amplitude axis label. Note: this
@@ -1514,11 +1546,11 @@ class PlaceScan():
             
             # Assume that the trace input on the scope was the second channel
             for i in range(self.trace_data.shape[1]-1):
-                scope_dynmc_range = self._get_scope_dynm_range(i+1)
+                scope_dynmc_range = self._get_scope_dynm_range(i+1) / 2.0
                 scope_impedance = ''.join(list(filter(str.isdigit, scope_config['analog_inputs'][i+1]['input_impedance'])))
                 
                 # Change the units to volts. Maybe divide by 2 if input impedance is 50 ohms (not active yet).
-                self.trace_data[:,i+1,:,:] = self.trace_data[:,i+1,:,:] / (2.0 ** scope_bits) * scope_dynmc_range
+                self.trace_data[:,i+1,:,:] = (self.trace_data[:,i+1,:,:] - (2.0 ** (scope_bits-1))) / (2.0 ** (scope_bits-1)) * scope_dynmc_range
                 if scope_impedance == '50':
                     self.trace_data[:,i+1,:,:] = self.trace_data[:,i+1,:,:] #Not doing anything here yet.
         except:
@@ -1526,8 +1558,15 @@ class PlaceScan():
         
         try:
             # Calibrate to the vibrometer units
-            vib_calib = next(val for (key,val) in self.metadata.items() if 'calibration' in key and isinstance(val, type(1.0)))
-            vib_calib_units = next(val for (key,val) in self.metadata.items() if 'calibration_units' in key)[:-3]    
+            if not polytec_decoder:
+                polytec_decoder = 'c'
+            decoder, vib_calib = next((key,val) for (key,val) in self.metadata.items() if ('calibration' in key and isinstance(val, type(1.0)) and polytec_decoder in key))
+            vib_calib_units = next(val for (key,val) in self.metadata.items() if ('calibration_units' in key and decoder in key and polytec_decoder in key))
+            second_vib = next(val for (key,val) in self.metadata.items() if ('calibration_units' in key and decoder not in key))
+            if second_vib and polytec_decoder == 'c':
+                print('Warning: PlaceScan _true_amps: Two vibrometer inputs detected. Using {} {} for calibration. Please specify decoder to use.'.format(vib_calib,vib_calib_units[:-1]))
+            vib_calib_units = vib_calib_units[vib_calib_units.rfind(' ')+1:]
+            vib_calib_units = vib_calib_units[:vib_calib_units.rfind('/')]
         
             self.trace_data[:,1,:,:] = self.trace_data[:,1,:,:] * vib_calib
            
@@ -1546,7 +1585,7 @@ class PlaceScan():
             --ind: The index of the channel in the npy array structure
         
         Returns:
-            --dynm_range: The dynamic range of the scope channel
+            --dynm_range: The full maximum to minimum dynamic range of the scope channel
         '''
         
         if self.place_version < 0.8:
@@ -1652,7 +1691,7 @@ class PlaceScan():
         
     def _get_plot_data(self, tmax=None, tmin=None, normed=False, bandpass=None,
                        dc_corr_seconds=None, decimate=False, differentiate=False,
-                       taper=None):
+                       taper=None, detrend=True):
         '''
         Function to slice the data for plotting
         
@@ -1674,6 +1713,7 @@ class PlaceScan():
                 be differentiated. 
             --taper: A taper to apply to a section of the data. See the apply_taper
                 function.
+            --detrend: True to detrend the data
             
         Returns:
             --data: The plotting values
@@ -1685,11 +1725,12 @@ class PlaceScan():
         s = plot_data.shape
         plot_data = plot_data.reshape(s[0]*s[1],s[2])
         
-        # Detrending
-        try:
-            plot_data = detrend(plot_data)    
-        except ValueError:
-            print('PlaceScan: Detrending error warning. Still proceeding')
+        if detrend:
+            # Detrending
+            try:
+                plot_data = dt_func(plot_data)    
+            except ValueError:
+                print('PlaceScan: Detrending error warning. Still proceeding')
         
         if differentiate:
             from scipy.integrate import cumtrapz
@@ -1701,8 +1742,9 @@ class PlaceScan():
         if bandpass:
             plot_data = bandpass_filter(plot_data, bandpass[0], bandpass[1], self.sampling_rate)
 
-        # Detrending
-        plot_data = detrend(plot_data)  
+        if detrend:
+            # Detrending
+            plot_data = dt_func(plot_data)  
 
         if tmax:
             ind = np.where(plot_times <= tmax)[0][-1]
@@ -1713,8 +1755,9 @@ class PlaceScan():
             plot_times = plot_times[ind:]
             plot_data = plot_data[:,ind:] 
 
-        # Detrending
-        plot_data = detrend(plot_data)  
+        if detrend:
+            # Detrending
+            plot_data = dt_func(plot_data)  
 
         if normed:
             plot_data = normalize(plot_data, normed)
@@ -1755,7 +1798,7 @@ class PlaceScan():
             start_ind = np.argmin(np.abs(plot_times-start_time))
             end_ind = np.argmin(np.abs(plot_times-end_time))
             
-        plot_data, plot_times = detrend(plot_data[start_ind:end_ind+1]), plot_times[start_ind:end_ind+1]    
+        plot_data, plot_times = dt_func(plot_data[start_ind:end_ind+1]), plot_times[start_ind:end_ind+1]    
         if taper:
             taper = np.hanning(len(plot_data))
             plot_data = np.multiply(plot_data,taper)
@@ -1776,7 +1819,7 @@ class PlaceScan():
         mJ_pos = com.rfind('mJ')
         com = com[:mJ_pos].strip()
         ind, start_pos= -1,0
-        while True:
+        while len(com) > 0 and True:
             if com[ind] not in '0123456789.':
                 start_pos = ind+1
                 break
@@ -1809,11 +1852,13 @@ def normalize(data, mode):
     '''
     
     if mode == True:
-        max_vals = [np.amax(np.abs(array)) for array in data]
-        for i in range(len(max_vals)):
-            if max_vals[i] == 0.:
-                max_vals[i] = 1.
-        return np.array([data[i]/max_vals[i] for i in range(len(data))])
+        if len(data.shape) > 1:
+            max_vals = [np.amax(np.abs(array)) for array in data]
+            for i in range(len(max_vals)):
+                if max_vals[i] == 0.:
+                    max_vals[i] = 1.
+            return np.array([data[i]/max_vals[i] for i in range(len(data))])
+        return data/np.amax(np.abs(data))
     if mode == 'scan':
         return data/np.amax(np.abs(data))
     if isinstance(mode, (int,float)) and not isinstance(mode, bool):
@@ -1996,7 +2041,43 @@ def return_csv_waveforms(filenames, time_delay=0.0):
     else:
         return all_times, all_amps
 
-        
+def open_most_recent(**kwargs):
+    """
+    Function which returns the most recently
+    modified valid PLACE scan in the current directory
+    as a PlaceScan object. If no valid PLACE scan
+    is found, an exception is raised. Keyword
+    arguments for opening the PlaceScan can be specified
+    """
+
+    sub_dirs = glob.glob("*/")
+
+    data_paths = []
+    for sub_dir in sub_dirs:
+        paths = glob.glob(sub_dir+'*')
+        for path in paths:
+            if "data.npy" in path:
+                data_paths.append((path,sub_dir))
+    
+    max_time = 0
+    most_recent_path = None
+    for data_path in data_paths:
+        mod_time = os.path.getmtime(data_path[0])
+        if mod_time > max_time:
+            max_time = mod_time
+            most_recent_path = data_path[1]
+
+    if most_recent_path:
+        print("Opening {}".format(most_recent_path[:-1]))
+        return PlaceScan(most_recent_path, **kwargs)
+    
+    raise FileNotFoundError("Valid PLACE scan directory not found.")
+
+def omr(**kwargs):
+    """An alias for open_most_recent"""
+    return open_most_recent(**kwargs)
+
+
         
         
         

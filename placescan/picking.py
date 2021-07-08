@@ -566,6 +566,7 @@ class AICPicker():
                     pick_index = np.argmin(aic_func)
                     pick = self.times[pick_index]
             self.picks[i] = pick
+            print(i)
 
         self.correct_blanks()
 

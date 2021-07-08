@@ -13,8 +13,8 @@ DTW poropyck python package.
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import hilbert
-from dtw import dtw
 
+from dtw.dtw import dtw
 
 class Cursor(object):
     def __init__(self, ax, axx, axy):
@@ -332,7 +332,11 @@ def do_dtw(template, query, template_times, query_times, alpha=0, plot=True):
     in the array.
     '''
 
-    dist, query_inds, template_inds, costs = dtw(query, template, alpha=alpha)
+    try:
+        dist, query_inds, template_inds, costs = dtw(query, template, alpha=alpha)
+    except TypeError:
+        #print("DTW Main Warning: alpha parameter not supported. Using alpha=0.")
+        dist, query_inds, template_inds, costs = dtw(query, template)
     del costs
     
     # The lower the distance of alignment, the better the match

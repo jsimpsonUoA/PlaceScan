@@ -7,6 +7,8 @@ Masters project, PAL Lab UoA, 26/03/18
 '''
 
 import numpy as np
+import warnings
+from scipy.signal import detrend as dt_func
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -23,7 +25,8 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
                tick_fontsize=14.0, grid=False, legend=False, legend_loc='lower left',
                legend_fontsize=12.0, polar=False, polar_min=0, colorbar=True, 
                color_key=None, color_label='', color_data=None, color_data_labels=None,
-               colorbar_trim=[0,1], colorbar_round=1, colorbar_horiz=False, lines=None):
+               colorbar_trim=[0,1], colorbar_round=1, colorbar_horiz=False, lines=None,
+               color_log=False):
     '''
     General function to format and save a figure.
 
@@ -45,7 +48,7 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
         --polar_min: The minimum theta axis label for a polar plot. Either 
                    0 or -180.
         --colorbar: True to plot a colorbar, if color_key is specified.
-        --color_[key, label, data, data_labels, bar_trim, bar_round, bar_horiz]: 
+        --color_[key, label, data, data_labels, bar_trim, bar_round, bar_horiz, log]: 
             The arguments for creating a sequential color bar for the plotted data.
             See create_colorbar function for more details.
         --lines: The lines plotted on the axis
@@ -91,9 +94,12 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
         ax.tick_params(axis='both', which='minor', labelsize=tick_fontsize)
 
     if grid:
-        ax.set_rlabel_position(340) 
-        ax.yaxis.get_major_locator().base.set_params(nbins=6)
-        ax.grid(which='major', linestyle=':')
+        if polar:
+            ax.set_rlabel_position(340) 
+            ax.yaxis.get_major_locator().base.set_params(nbins=6)
+            ax.grid(which='major', linestyle=':')
+        else:
+            ax.grid()
 
     if legend:
         ax.legend(loc=legend_loc,fontsize=legend_fontsize)
@@ -106,7 +112,7 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
         fig, ax = create_colorbar(fig, ax, color_key, color_label,
              color_data, lab_font, tick_fontsize, color_data_labels,
              colorbar_trim, colorbar, colorbar_round, colorbar_horiz,
-             lines)
+             lines, color_log)
         plt.sca(ax)
 
     if save_dir:
@@ -115,7 +121,7 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
             for _dir in save_dir:
                 fig.savefig(_dir, bbox_inches='tight')
         else:
-            fig.savefig(save_dir, bbox_inches='tight')
+            fig.savefig(save_dir, bbox_inches='tight',dpi=300)
     
     if show:
         plt.show()
@@ -125,8 +131,8 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
 
 def create_colorbar(fig, ax, color_key, color_label, color_data,
                     lab_font, tick_fontsize, color_data_labels=None,
-                    colorbar_trim=[.2,9], colorbar=True, colorbar_round=1,
-                    colorbar_horiz=False, lines=None):
+                    colorbar_trim=[.2,.9], colorbar=True, colorbar_round=1,
+                    colorbar_horiz=False, lines=None,color_log=False):
     '''
     Function which is called within format_fig
     to color-code plotted lines by a 3rd variable.
@@ -165,6 +171,8 @@ def create_colorbar(fig, ax, color_key, color_label, color_data,
                           colorbar axis labels to
         --colorbar_horiz: True to have a horizontal colorbar
         --lines: The specific lines to apply the color scale to.
+        --color_log: True to make the color bar a logarithmic scale. False
+            gives a linear scale.
 
     Returns:
         --fig: The figure with the colorbar plotted
@@ -193,7 +201,10 @@ def create_colorbar(fig, ax, color_key, color_label, color_data,
         cmap = get_cmap(color_key.capitalize()+'s')
     else:
         cmap = get_cmap(color_key)
-    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    if color_log:
+        norm = mpl.colors.LogNorm(vmin=min_n, vmax=max_n)
+    else:
+        norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
     #Color-code the plot
     for i in range(len(color_data)):
@@ -242,6 +253,104 @@ def create_colorbar(fig, ax, color_key, color_label, color_data,
             cb.ax.xaxis.tick_top(), cb.ax.xaxis.set_label_position('top')
 
     return fig, ax
+
+
+def get_plot_data(data, times, sampling_rate, tmax=None, tmin=None, normed=False, 
+                    bandpass=None, dc_corr_seconds=None, decimate=False, differentiate=False,
+                    taper=None, detrend=True):
+        '''
+        A function to apply signal processing and other
+        routines to scan data before plotting. Assumes
+        the data is four-dimensional.
+        
+        Arguments:
+            --data: The data to process. This is a two or three-dimensional array.
+                If three dimensions, the array is flattened into two.
+            --times: An array of times with the same length as the last dimension of data.
+            --sampling_rate: The sampling rate of the data in Hz
+            --tmax: The maximum time to plot for
+            --tmin: The minimum time to plot for
+            --normed: Ture if the data is to be normalised
+            --bandpass: A tuple of (min_freq, max_freq) for a bandpass filter
+            --dc_corr_seconds: The number of seconds at the beginning of each
+                trace to calcualte the mean from, and then subtract from the
+                entire trace. The results is that the first parts of the 
+                trace will be centred on 0.
+            --decimate: Reduce the sampling rate of the data for plotting. Recommended
+                if the pltos are being saved and the original sampling rate is high.
+                If True, the data is down sampled to a frequency twice the high
+                corner of the bandpass. If no bandpass is applied, decimate needs
+                to be an integer factor to downsample by
+            --differentiate: An integer specifying how many times the signal should
+                be differentiated. 
+            --taper: A taper to apply to a section of the data. See the apply_taper
+                function.
+            --detrend: True to detrend the data
+            
+        Returns:
+            --data: The plotting values
+            --times: The plotting times
+        '''
+
+        plot_times = times.copy()
+        plot_data = data.copy()  
+        s = plot_data.shape
+        if len(s) > 2:
+            plot_data = plot_data.reshape(s[0]*s[1],s[2])
+        
+        if detrend:
+            # Detrending
+            try:
+                plot_data = dt_func(plot_data)    
+            except ValueError:
+                print('Detrending error warning. Still proceeding')
+        
+        if differentiate:
+            from scipy.integrate import cumtrapz
+            plot_data = cumtrapz(plot_data,x=plot_times,axis=1)
+            plot_times = plot_times[:-1]
+            plot_data = cumtrapz(plot_data,x=plot_times,axis=1)
+            plot_times = plot_times[:-1]
+            
+        if bandpass:
+            plot_data = bandpass_filter(plot_data, bandpass[0], bandpass[1], sampling_rate)
+
+        if detrend:
+            # Detrending
+            plot_data = dt_func(plot_data)  
+
+        if tmax:
+            ind = np.where(plot_times <= tmax)[0][-1]
+            plot_times = plot_times[:ind+1]
+            plot_data = plot_data[:,:ind+1]
+        if tmin != None:
+            ind = np.where(plot_times >= tmin)[0][0]
+            plot_times = plot_times[ind:]
+            plot_data = plot_data[:,ind:] 
+
+        if detrend:
+            # Detrending
+            plot_data = dt_func(plot_data)  
+
+        if normed:
+            plot_data = normalize(plot_data, normed)
+        
+        if dc_corr_seconds:
+            plot_data = np.array([array - np.mean(array[:int(sampling_rate * dc_corr_seconds)])
+                                        for array in plot_data])
+    
+        if decimate:
+            if bandpass:
+                factor = int(sampling_rate // bandpass[1] / 2)
+            else:
+                factor = int(decimate)
+            plot_data = plot_data[:,::factor]
+            plot_times = plot_times[::factor]
+
+        if taper:
+            plot_data, plot_times = apply_taper(taper, plot_data, plot_times)
+
+        return plot_data, plot_times
 
 
 def wiggle_plot(values, times, x_positions, fig=None, figsize=(8,6),amp_factor=8.0,
@@ -374,7 +483,7 @@ def variable_density(values, times, x_positions, fig=None, figsize=(9,7), gain=0
 
 
 def all_traces(values, times, fig=None, figsize=(8,6),
-                tmax=1e20, title=None, ylab='Amplitude', show=True,
+                tmax=1e20, title=None, ylab='Amplitude', xlab='Time ($\mu$s)', show=True,
                 save_dir=False, plot_picks_dir=None, pick_errors=None,
                 picks_offset=None, legend=False, show_orientation=False, 
                  position=None, inset_params=None, marker='',
@@ -391,6 +500,7 @@ def all_traces(values, times, fig=None, figsize=(8,6),
         --tmax: The maximum time to plot for
         --title: A title for the plot
         --ylab: The y label for the plot
+        --xlab: The x label for the plot
         --show: Set to True to show the plot
         --save_dir: The directory (or list of directories) to save the figure to.
         --plot_picks_dir: The directory where wave arrival picks are saved. This
@@ -432,6 +542,11 @@ def all_traces(values, times, fig=None, figsize=(8,6),
     [format_dict.pop(key) for key in list(format_dict.keys()) if key not in inspect.getargspec(format_fig)[0]]
     
     lines = []
+    try:
+        dummy_var = len(values[0])
+    except TypeError:
+        values = [values]
+
     for value in values:
         lines.append(ax.plot(times, value, marker=marker, **plot_kwargs))
 
@@ -453,7 +568,7 @@ def all_traces(values, times, fig=None, figsize=(8,6),
         
     if not xlim:
         xlim = (max(0.0,times[0]), min(times[-1], tmax))
-    fig, ax = format_fig(fig, ax, title=title, xlab='Time ($\mu$s)', ylab=ylab,
+    fig, ax = format_fig(fig, ax, title=title, xlab=xlab, ylab=ylab,
                         xlim=xlim, save_dir=None, show=False, legend=legend, **format_dict)  
 
     if inset_params:
@@ -915,7 +1030,7 @@ def wv_spect(values, times, fig=None, figsize=(8,10), trace_ylab=None,
 
 def animate_plots(plotting_functions, func_kwargs=None, update_interval=2,
                   repeat_delay=0., show=True, figsize=(8,6), titles=None, 
-                  save_dir=None):
+                  save_dir=None,forward_frame_num=False):
     '''
     Function to create an animation between different plots.
     the results can be saved as a gif.
@@ -931,6 +1046,8 @@ def animate_plots(plotting_functions, func_kwargs=None, update_interval=2,
         --figsize: The size of hte figure
         --titles: A list of titles to display for each update
         --save_dir: The directory to save the GIF to.
+        --forward_frame_num: True to give the first argument of the plotting
+            function as the frame number.
         
     Returns:
         None    
@@ -941,7 +1058,10 @@ def animate_plots(plotting_functions, func_kwargs=None, update_interval=2,
         index = i % len(plotting_functions)
         if titles:
             func_kwargs[index]['title'] = titles[index]
-        plotting_functions[index](**func_kwargs[index])
+        if forward_frame_num:
+            plotting_functions[index](i,**func_kwargs[index])
+        else:
+            plotting_functions[index](**func_kwargs[index])
         fig.canvas.draw()
         
     
@@ -972,7 +1092,7 @@ def animate_plots(plotting_functions, func_kwargs=None, update_interval=2,
     
     if save_dir:
         if str(save_dir).find('mp4') != -1:
-            plt.rcParams['animation.ffmpeg_path'] = '/snap/bin/ffmpeg'
+            #plt.rcParams['animation.ffmpeg_path'] = '/snap/bin/ffmpeg'
             writer = animation.FFMpegWriter(fps=1/update_interval, bitrate=1800, codec='ffmpeg', extra_args=['-vcodec', 'libx264'])
             anim.save(save_dir, dpi=80, writer=writer)
         else:
@@ -1044,7 +1164,7 @@ def plot_anisotropy_reference(fig, angle=0., initial_angle=0.0, clockwise=False,
 def psd_spectrum(values, times, sampling_rate, figsize=(8,9), tmax=1e20, 
                  title=None, ylab='Amplitude', plot_picks_dir=None, plot_trace=True,
                  pick_errors=None, max_freq=2000, fig=None, normalise_spectra=False,
-                 min_freq=0., **kwargs):
+                 min_freq=0., linear_scale=False, **kwargs):
     '''
     Function to plot the spectral power of a trace calculated using
     the scipy periodogram function
@@ -1065,6 +1185,7 @@ def psd_spectrum(values, times, sampling_rate, figsize=(8,9), tmax=1e20,
         --fig: A fig to plot on
         --normalise_spectra: True to plot each spectral line between 0 and 1.
         --min_freq: The minimum frequency to plot
+        --linear_scale: True to plot the PSD on a linear scale
         --**kwargs: The keyword arguments for the plotting
         
     Returns:
@@ -1108,7 +1229,10 @@ def psd_spectrum(values, times, sampling_rate, figsize=(8,9), tmax=1e20,
         else:
             spec /= np.max(spec)
         units = 'arb. units'
-    line = ax2.semilogy(freq, spec, **plot_kwargs)
+    if not linear_scale:
+        line = ax2.semilogy(freq, spec, **plot_kwargs)
+    else:
+        line = ax2.plot(freq, spec, **plot_kwargs)
 
     if plot_picks_dir:
         plot_picks(ax1, plot_picks_dir, pick_errors)
@@ -1199,7 +1323,8 @@ def multitaper_spect(values, times, sampling_rate, figsize=(8,9), tmax=1e20,
     return fig   
     
 
-def cross_correlation(a, b, sampling_rate, fig=None, figsize=(8,6), plot=True, **kwargs):
+def cross_correlation(a, b, sampling_rate, fig=None, figsize=(8,6), plot=True, 
+                        return_function=False, **kwargs):
     '''
     Function which performs the cross correlation of two
     traces in the time domain, and plots the result. A positive
@@ -1212,6 +1337,8 @@ def cross_correlation(a, b, sampling_rate, fig=None, figsize=(8,6), plot=True, *
         --fig: A figure instance to plot onto
         --plot: True to create a plot of the correlation function
         --figsize: The size of the figure
+        --return_function: True to return the cross-correlation function and
+                time arrays
         --**kwargs: The keyword arguments for plotting and saving
         
     Returns:
@@ -1236,16 +1363,19 @@ def cross_correlation(a, b, sampling_rate, fig=None, figsize=(8,6), plot=True, *
     corr = correlate(a-np.mean(a),b-np.mean(b)) / norm_factor
     times = np.arange(-np.floor(len(corr)/2),np.floor(len(corr)/2)+1) * 1. / sampling_rate * 1e6
     
-    max_lag = times[np.argmax(np.abs(corr))] * -1.  #Needs to be multiplied by -1 to get sign of max_lag correct
+    max_lag = times[np.argmax(corr)] * -1.  #Needs to be multiplied by -1 to get sign of max_lag correct
 
     if plot:
         ax.plot(times,corr, **plot_kwargs)
-        ax.axvline(x=max_lag, linestyle='--', linewidth=1,color='r')
+        ax.axvline(x=-1.*max_lag, linestyle='--', linewidth=1,color='r')
         ax.text(0.05,0.9, '$r_{max}$='+str(max_lag), transform=ax.transAxes)
         
         fig, ax = format_fig(fig, ax, xlab='Lag Time ($\mu$s)',xlim=(times[0],times[-1]), **format_dict)
     
-    return fig, max_lag
+    if not return_function:
+        return fig, max_lag
+    else:
+        return fig, max_lag, corr, times
     
     
 def zoomed_inset(fig, ax, region=[1,2,1,2], zoom=2, aspect=2, inset_loc=2,
@@ -1484,6 +1614,120 @@ def plot_arrow(fig, ax, base_pos, head_pos, width=1,
 
     return fig, ax
 
+
+def normalize(data, mode):
+    '''
+    Function to normalise the data
+    
+    Arguments:
+        --data: The data to be normalised
+        --mode: The mode of nomralisation. True for trace-by-trace
+                normalisation, or 'scan' for normalisation relative
+                to the maximum value in data
+        
+    Returns:
+        --data: The normalized data
+    '''
+    
+    if mode == True:
+        max_vals = [np.amax(np.abs(array)) for array in data]
+        for i in range(len(max_vals)):
+            if max_vals[i] == 0.:
+                max_vals[i] = 1.
+        return np.array([data[i]/max_vals[i] for i in range(len(data))])
+    if mode == 'scan':
+        return data/np.amax(np.abs(data))
+    if isinstance(mode, (int,float)) and not isinstance(mode, bool):
+        return data/mode
+    return data
+        
+        
+def bandpass_filter(data, min_freq, max_freq, sampling_rate):
+    '''
+    Apply a bandpass filter to data. Borrowed from obspy.signal.filter
+    
+    Arguments:
+        --data: the data to be filtered
+        --min_freq: The lower corner frequency of the bandpass filter
+        --max_freq: The upper corner frequency of the bandpass filter
+        --sampling_rate: The sampling rate of the data
+        
+    Returns:
+        --data: The filtered data
+    '''
+    
+    from scipy.signal import iirfilter, zpk2sos, sosfiltfilt
+    
+    fe = 0.5 * sampling_rate
+    low = min_freq / fe
+    high = max_freq / fe
+    
+    # Raise for some bad scenarios
+    if high - 1.0 > -1e-6:
+        msg = ("Selected high corner frequency ({}) of bandpass is at or "
+               "above Nyquist ({}). No filter applied.").format(max_freq, fe)
+        warnings.warn(msg)
+        return data
+    
+    if low > 1:
+        msg = "Selected low corner frequency is above Nyquist."
+        raise ValueError(msg)
+        
+    z, p, k = iirfilter(4, [low, high], btype='band',
+                        ftype='butter', output='zpk')
+    sos = zpk2sos(z, p, k)
+    firstpass = sosfiltfilt(sos, data)
+    
+    return firstpass#sosfilt(sos, firstpass[::-1])[::-1]
+        
+def apply_taper(taper, values, times):
+    '''
+    This function applies a taper to a section of plot data. 
+    
+    Arguments:
+        --taper: is in the form of a two or three element list or tuple. 
+            The first element is the start time of the taper (usually 0.), 
+            the second element is the end time of the taper, and the optional 
+            third element is the intensity of the taper. This must be a value 
+            between 0 and 1, where 0 is the least aggressive tapering, and 1 
+            is the most aggressive (1 essentially mutes all the data within 
+            the tapering bounds).
+        --values: The plotting data
+        --times: The plotting times
+
+    Returns:
+        --values: The plotting values with taper applied
+        --times: The plotting times
+    '''
+
+    try:
+        start_i = np.argmin(np.abs(times-taper[0]))
+        end_i = np.argmin(np.abs(times-taper[1]))
+        full_size = end_i-start_i + 1 
+        values_size = len(values[0])
+
+        try:
+            intensity = taper[2]
+            if not (0. <= intensity <= 1.0):
+                raise ValueError
+        except IndexError:
+            intensity = 0.
+
+        intensity = 1. - intensity
+        taper_size = int((full_size)*intensity)
+        zero_size = full_size-taper_size
+        taper = np.hanning(taper_size*2)[:taper_size]
+        zeros = np.zeros(zero_size)
+        front_ones  = np.zeros(start_i)+1.
+        back_ones = np.zeros(values_size-1-end_i)+1.
+        full_taper = np.concatenate((front_ones,zeros,taper,back_ones))
+
+        for i in range(len(values)):
+            values[i] = values[i]*full_taper
+    except:
+        print('PlaceScan: Invalid taper for plotting. No taper applied.')
+
+    return values, times
 
 def set_color_cycle(colors_=None,markers_=None, only_colors=True):
     '''

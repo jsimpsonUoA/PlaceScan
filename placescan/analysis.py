@@ -81,7 +81,7 @@ class RPCalculator():
 
         self.sample_data = self.retrieve_sample_data(data_filename)[sample_name]
         self.get_s_wave_picks(s_wave_picks_dir)
-        print(self.s_wave_picks)
+        
         self.max_inds, self.min_inds = self.get_max_min_inds()  #Indices of max and min arrival times
         self.get_max_min_p_picks()
 
@@ -441,7 +441,7 @@ class RPCalculator():
 
         diameter = self.sample_data['diameter']
         height = self.sample_data['height']
-        print(self.sample_data)
+        #print(self.sample_data)
         try:
             density = self.sample_data['density']
         except KeyError:
