@@ -17,11 +17,11 @@ from mtspec import wigner_ville_spectrum, mtspec
 import csv
 import inspect
 
-#plt.rc('text', usetex=True)
-#plt.rc('font', family='serif')
+global LATEX_FORMAT
+LATEX_FORMAT = False
 
 def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None, 
-               save_dir=None, show=True, lab_font=20.0, title_font=20.0, 
+               save_dir=None, show=True, lab_font=20.0, lab_color='k', title_font=20.0, 
                tick_fontsize=14.0, grid=False, legend=False, legend_loc='lower left',
                legend_fontsize=12.0, polar=False, polar_min=0, colorbar=True, 
                color_key=None, color_label='', color_data=None, color_data_labels=None,
@@ -41,6 +41,7 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
         --save_dir: The directory (or list of dirs) to save the figure to.
         --show: Set to True to show the plot
         --lab_font: The axis label fontsize
+        --lab_color: The axis labels color
         --title_font: The title font size
         --tick_fontsize: The axis tick fontsize
         --grid: Show a grid on the plot
@@ -68,9 +69,9 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
         pass
     
     if xlab:
-        ax.set_xlabel(xlab, fontsize=lab_font)
+        ax.set_xlabel(xlab, fontsize=lab_font, color=lab_color)
     if ylab:
-        ax.set_ylabel(ylab, fontsize=lab_font)
+        ax.set_ylabel(ylab, fontsize=lab_font, color=lab_color)
         
     if xlim or polar_min:
         if polar:
@@ -86,8 +87,11 @@ def format_fig(fig, ax, title=None, xlab=None, ylab=None, xlim=None, ylim=None,
                 ax.set_xticklabels(['${}^\\circ$'.format(s) for s in labels.astype(int)])
         else:
             ax.set_xlim(xlim)
-    if ylim:
+    #if ylim != None:
+    try:
         ax.set_ylim(ylim) 
+    except TypeError:
+        pass
 
     if tick_fontsize:
         ax.tick_params(axis='both', which='major', labelsize=tick_fontsize)
@@ -1248,7 +1252,7 @@ def psd_spectrum(values, times, sampling_rate, figsize=(8,9), tmax=1e20,
 def multitaper_spect(values, times, sampling_rate, figsize=(8,9), tmax=1e20, 
                  title=None, ylab='Amplitude', plot_picks_dir=None, plot_trace=True,
                  pick_errors=None, max_freq=2000, fig=None, normalise_spectra=False,
-                 plot_uncertainties=False, min_freq=0, **kwargs):
+                 plot_uncertainties=False, linear_scale=False, min_freq=0, **kwargs):
     '''
     Function to plot the spectral power of a trace calculated using
     a multitaper spectrum.
@@ -1270,6 +1274,7 @@ def multitaper_spect(values, times, sampling_rate, figsize=(8,9), tmax=1e20,
         --normalise_spectra: True to plot each spectral line between 0 and 1.
         --plot_uncertainties: True to plot the uncertainties for the spectra.
         --min_freq: The minimum frequency to plot
+        --linear_scale: True to plot the PSD on a linear scale
         --**kwargs: The keyword arguments for the plotting
         
     Returns:
@@ -1309,7 +1314,10 @@ def multitaper_spect(values, times, sampling_rate, figsize=(8,9), tmax=1e20,
         else:
             spec /= np.max(spec)
         units = 'arb. units'
-    line = ax2.semilogy(freq, spec, **plot_kwargs)
+    if not linear_scale:
+        line = ax2.semilogy(freq, spec, **plot_kwargs)
+    else:
+        line = ax2.plot(freq, spec, **plot_kwargs)
 
     if plot_uncertainties:
         ax2.fill_between(freq, jackknife[:, 0], jackknife[:, 1], alpha=0.1, color=line[0].get_color())
@@ -1746,6 +1754,16 @@ def set_color_cycle(colors_=None,markers_=None, only_colors=True):
     elif only_colors:
         mpl.rcParams['axes.prop_cycle'] = cycler(c=colors)
 
+def set_format(latex_on=True):
+    """Set the latex formatting"""
+    global LATEX_FORMAT
+    LATEX_FORMAT = latex_on
+    if LATEX_FORMAT:
+        plt.rc('text', usetex=True)
+        plt.rc('font', family='serif')
+    else:
+        plt.rc('text', usetex=False)
+        plt.rc('font', family='sans-serif')
 
 
 #blue, red, Purple,  green, orange,  yellow

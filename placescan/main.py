@@ -1852,6 +1852,7 @@ def normalize(data, mode):
     '''
     
     if mode == True:
+        data=  np.array(data)
         if len(data.shape) > 1:
             max_vals = [np.amax(np.abs(array)) for array in data]
             for i in range(len(max_vals)):
@@ -1951,7 +1952,7 @@ def apply_taper(taper, values, times):
     except:
         print('PlaceScan: Invalid taper for plotting. No taper applied.')
 
-    return values, times
+    return np.array(values), times
 
 
 def spectrum_comparison(scans, trace_indices=None, positions=None, labels=None,
